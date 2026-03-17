@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="utf-8"?>
+<robot name="kr6_r900_2">
+
+  <!-- planning group: full 6-axis arm, base_link to tool0 -->
+  <group name="manipulator">
+    <chain base_link="base_link" tip_link="tool0"/>
+  </group>
+
+  <!-- end effector group -->
+  <group name="end_effector">
+    <link name="tool0"/>
+  </group>
+
+  <!-- named states -->
+  <group_state name="home" group="manipulator">
+    <joint name="joint_1" value="0"/>
+    <joint name="joint_2" value="-1.5708"/>
+    <joint name="joint_3" value="1.5708"/>
+    <joint name="joint_4" value="0"/>
+    <joint name="joint_5" value="0"/>
+    <joint name="joint_6" value="0"/>
+  </group_state>
+
+  <group_state name="extended" group="manipulator">
+    <joint name="joint_1" value="0"/>
+    <joint name="joint_2" value="0"/>
+    <joint name="joint_3" value="0"/>
+    <joint name="joint_4" value="0"/>
+    <joint name="joint_5" value="0"/>
+    <joint name="joint_6" value="0"/>
+  </group_state>
+
+  <!-- end effector declaration -->
+  <end_effector name="eef" parent_link="tool0"
+                group="end_effector" parent_group="manipulator"/>
+
+  <!-- disable collision checking between adjacent links -->
+  <disable_collisions link1="base_link" link2="link_1" reason="Adjacent"/>
+  <disable_collisions link1="link_1"    link2="link_2" reason="Adjacent"/>
+  <disable_collisions link1="link_2"    link2="link_3" reason="Adjacent"/>
+  <disable_collisions link1="link_3"    link2="link_4" reason="Adjacent"/>
+  <disable_collisions link1="link_4"    link2="link_5" reason="Adjacent"/>
+  <disable_collisions link1="link_5"    link2="link_6" reason="Adjacent"/>
+
+  <!-- disable collision checking between non-adjacent links that never collide -->
+  <disable_collisions link1="link_1" link2="link_3" reason="Never"/>
+  <disable_collisions link1="link_2" link2="link_5" reason="Never"/>
+  <disable_collisions link1="link_2" link2="link_6" reason="Never"/>
+  <disable_collisions link1="link_3" link2="link_5" reason="Never"/>
+  <disable_collisions link1="link_3" link2="link_6" reason="Never"/>
+  <disable_collisions link1="link_4" link2="link_6" reason="Never"/>
+
+</robot>
