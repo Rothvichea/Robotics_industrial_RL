@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<robot xmlns:xacro="http://ros.org/wiki/xacro" name="kr6_dual_arm">
+
+  <xacro:include filename="$(find kr6_r900_cell)/urdf/kr6_r900_macro.xacro"/>
+
+  <!-- world link -->
+  <link name="world"/>
+
+  <!-- arm_1 at origin -->
+  <xacro:kr6_r900 prefix="arm_1_" parent="world" x="0"   y="-0.6" z="0"/>
+
+  <!-- arm_2 offset 1.2m on Y, rotated 180deg to face arm_1 -->
+  <xacro:kr6_r900 prefix="arm_2_" parent="world" x="0"   y="0.6"  z="0"/>
+
+</robot>

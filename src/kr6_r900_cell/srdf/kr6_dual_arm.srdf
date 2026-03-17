@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="utf-8"?>
+<robot name="kr6_dual_arm">
+
+  <!-- arm_1 planning group -->
+  <group name="arm_1">
+    <chain base_link="arm_1_base_link" tip_link="arm_1_tool0"/>
+  </group>
+
+  <!-- arm_2 planning group -->
+  <group name="arm_2">
+    <chain base_link="arm_2_base_link" tip_link="arm_2_tool0"/>
+  </group>
+
+  <!-- combined dual arm group -->
+  <group name="dual_arm">
+    <group name="arm_1"/>
+    <group name="arm_2"/>
+  </group>
+
+  <!-- named states for arm_1 -->
+  <group_state name="home" group="arm_1">
+    <joint name="arm_1_joint_1" value="0"/>
+    <joint name="arm_1_joint_2" value="-1.5708"/>
+    <joint name="arm_1_joint_3" value="1.5708"/>
+    <joint name="arm_1_joint_4" value="0"/>
+    <joint name="arm_1_joint_5" value="0"/>
+    <joint name="arm_1_joint_6" value="0"/>
+  </group_state>
+
+  <group_state name="ready" group="arm_1">
+    <joint name="arm_1_joint_1" value="0.5"/>
+    <joint name="arm_1_joint_2" value="-1.0"/>
+    <joint name="arm_1_joint_3" value="1.2"/>
+    <joint name="arm_1_joint_4" value="0"/>
+    <joint name="arm_1_joint_5" value="0.5"/>
+    <joint name="arm_1_joint_6" value="0"/>
+  </group_state>
+
+  <!-- named states for arm_2 -->
+  <group_state name="home" group="arm_2">
+    <joint name="arm_2_joint_1" value="0"/>
+    <joint name="arm_2_joint_2" value="-1.5708"/>
+    <joint name="arm_2_joint_3" value="1.5708"/>
+    <joint name="arm_2_joint_4" value="0"/>
+    <joint name="arm_2_joint_5" value="0"/>
+    <joint name="arm_2_joint_6" value="0"/>
+  </group_state>
+
+  <group_state name="ready" group="arm_2">
+    <joint name="arm_2_joint_1" value="-0.5"/>
+    <joint name="arm_2_joint_2" value="-1.0"/>
+    <joint name="arm_2_joint_3" value="1.2"/>
+    <joint name="arm_2_joint_4" value="0"/>
+    <joint name="arm_2_joint_5" value="0.5"/>
+    <joint name="arm_2_joint_6" value="0"/>
+  </group_state>
+
+  <!-- disable collisions between adjacent links — arm_1 -->
+  <disable_collisions link1="arm_1_base_link" link2="arm_1_link_1" reason="Adjacent"/>
+  <disable_collisions link1="arm_1_link_1"    link2="arm_1_link_2" reason="Adjacent"/>
+  <disable_collisions link1="arm_1_link_2"    link2="arm_1_link_3" reason="Adjacent"/>
+  <disable_collisions link1="arm_1_link_3"    link2="arm_1_link_4" reason="Adjacent"/>
+  <disable_collisions link1="arm_1_link_4"    link2="arm_1_link_5" reason="Adjacent"/>
+  <disable_collisions link1="arm_1_link_5"    link2="arm_1_link_6" reason="Adjacent"/>
+  <disable_collisions link1="arm_1_link_1"    link2="arm_1_link_3" reason="Never"/>
+  <disable_collisions link1="arm_1_link_2"    link2="arm_1_link_5" reason="Never"/>
+  <disable_collisions link1="arm_1_link_2"    link2="arm_1_link_6" reason="Never"/>
+  <disable_collisions link1="arm_1_link_3"    link2="arm_1_link_5" reason="Never"/>
+  <disable_collisions link1="arm_1_link_3"    link2="arm_1_link_6" reason="Never"/>
+  <disable_collisions link1="arm_1_link_4"    link2="arm_1_link_6" reason="Never"/>
+
+  <!-- disable collisions between adjacent links — arm_2 -->
+  <disable_collisions link1="arm_2_base_link" link2="arm_2_link_1" reason="Adjacent"/>
+  <disable_collisions link1="arm_2_link_1"    link2="arm_2_link_2" reason="Adjacent"/>
+  <disable_collisions link1="arm_2_link_2"    link2="arm_2_link_3" reason="Adjacent"/>
+  <disable_collisions link1="arm_2_link_3"    link2="arm_2_link_4" reason="Adjacent"/>
+  <disable_collisions link1="arm_2_link_4"    link2="arm_2_link_5" reason="Adjacent"/>
+  <disable_collisions link1="arm_2_link_5"    link2="arm_2_link_6" reason="Adjacent"/>
+  <disable_collisions link1="arm_2_link_1"    link2="arm_2_link_3" reason="Never"/>
+  <disable_collisions link1="arm_2_link_2"    link2="arm_2_link_5" reason="Never"/>
+  <disable_collisions link1="arm_2_link_2"    link2="arm_2_link_6" reason="Never"/>
+  <disable_collisions link1="arm_2_link_3"    link2="arm_2_link_5" reason="Never"/>
+  <disable_collisions link1="arm_2_link_3"    link2="arm_2_link_6" reason="Never"/>
+  <disable_collisions link1="arm_2_link_4"    link2="arm_2_link_6" reason="Never"/>
+
+  <!-- bases never collide with each other -->
+  <disable_collisions link1="arm_1_base_link" link2="arm_2_base_link" reason="Never"/>
+
+</robot>

@@ -10,6 +10,7 @@ install(
 
 install(
   PROGRAMS scripts/joint_goal_trajectory.py
+  PROGRAMS scripts/dual_arm_trajectory.py
   DESTINATION lib/${PROJECT_NAME}
 )
 
