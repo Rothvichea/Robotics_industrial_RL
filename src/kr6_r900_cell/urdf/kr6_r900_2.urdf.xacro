@@ -6,7 +6,7 @@
   <link name="base"/>
   <link name="base_link">
     <collision>
-      <geometry><mesh filename="package://kr6_r900_cell/meshes/kr6_r900_2/collision/base_link.stl"/></geometry>
+      <geometry><mesh filename="file:///home/genji/Robotics_industrial_RL/install/kr6_r900_cell/share/kr6_r900_cell/meshes/kr6_r900_2/collision/base_link.stl"/></geometry>
       <origin rpy="0 0 0" xyz="0 0 0"/>
     </collision>
     <inertial>
@@ -15,14 +15,14 @@
       <inertia ixx="0.162" ixy="0" ixz="0" iyy="0.109" iyz="0" izz="0.185"/>
     </inertial>
     <visual>
-      <geometry><mesh filename="package://kr6_r900_cell/meshes/kr6_r900_2/visual/base_link.dae"/></geometry>
+      <geometry><mesh filename="file:///home/genji/Robotics_industrial_RL/install/kr6_r900_cell/share/kr6_r900_cell/meshes/kr6_r900_2/visual/base_link.dae"/></geometry>
       <origin rpy="0 0 0" xyz="0 0 0"/>
     </visual>
   </link>
 
   <link name="link_1">
     <collision>
-      <geometry><mesh filename="package://kr6_r900_cell/meshes/kr6_r900_2/collision/link_1.stl"/></geometry>
+      <geometry><mesh filename="file:///home/genji/Robotics_industrial_RL/install/kr6_r900_cell/share/kr6_r900_cell/meshes/kr6_r900_2/collision/link_1.stl"/></geometry>
       <origin rpy="-3.14159 0 0" xyz="0 0 0.208"/>
     </collision>
     <inertial>
@@ -31,14 +31,14 @@
       <inertia ixx="0.074" ixy="0" ixz="0" iyy="0.089" iyz="0" izz="0.110"/>
     </inertial>
     <visual>
-      <geometry><mesh filename="package://kr6_r900_cell/meshes/kr6_r900_2/visual/link_1.dae"/></geometry>
+      <geometry><mesh filename="file:///home/genji/Robotics_industrial_RL/install/kr6_r900_cell/share/kr6_r900_cell/meshes/kr6_r900_2/visual/link_1.dae"/></geometry>
       <origin rpy="-3.14159 0 0" xyz="0 0 0.208"/>
     </visual>
   </link>
 
   <link name="link_2">
     <collision>
-      <geometry><mesh filename="package://kr6_r900_cell/meshes/kr6_r900_2/collision/link_2.stl"/></geometry>
+      <geometry><mesh filename="file:///home/genji/Robotics_industrial_RL/install/kr6_r900_cell/share/kr6_r900_cell/meshes/kr6_r900_2/collision/link_2.stl"/></geometry>
       <origin rpy="1.5708 0 1.5708" xyz="-0.4 -0.025 -0.091"/>
     </collision>
     <inertial>
@@ -47,14 +47,14 @@
       <inertia ixx="0.548" ixy="0" ixz="0" iyy="0.087" iyz="0" izz="0.589"/>
     </inertial>
     <visual>
-      <geometry><mesh filename="package://kr6_r900_cell/meshes/kr6_r900_2/visual/link_2.dae"/></geometry>
+      <geometry><mesh filename="file:///home/genji/Robotics_industrial_RL/install/kr6_r900_cell/share/kr6_r900_cell/meshes/kr6_r900_2/visual/link_2.dae"/></geometry>
       <origin rpy="1.5708 0 1.5708" xyz="-0.4 -0.025 -0.091"/>
     </visual>
   </link>
 
   <link name="link_3">
     <collision>
-      <geometry><mesh filename="package://kr6_r900_cell/meshes/kr6_r900_2/collision/link_3.stl"/></geometry>
+      <geometry><mesh filename="file:///home/genji/Robotics_industrial_RL/install/kr6_r900_cell/share/kr6_r900_cell/meshes/kr6_r900_2/collision/link_3.stl"/></geometry>
       <origin rpy="1.5708 0 0" xyz="-0.025 0.855 -0.086"/>
     </collision>
     <inertial>
@@ -63,14 +63,14 @@
       <inertia ixx="0.043" ixy="0" ixz="0" iyy="0.019" iyz="0" izz="0.048"/>
     </inertial>
     <visual>
-      <geometry><mesh filename="package://kr6_r900_cell/meshes/kr6_r900_2/visual/link_3.dae"/></geometry>
+      <geometry><mesh filename="file:///home/genji/Robotics_industrial_RL/install/kr6_r900_cell/share/kr6_r900_cell/meshes/kr6_r900_2/visual/link_3.dae"/></geometry>
       <origin rpy="1.5708 0 0" xyz="-0.025 0.855 -0.086"/>
     </visual>
   </link>
 
   <link name="link_4">
     <collision>
-      <geometry><mesh filename="package://kr6_r900_cell/meshes/kr6_r900_2/collision/link_4.stl"/></geometry>
+      <geometry><mesh filename="file:///home/genji/Robotics_industrial_RL/install/kr6_r900_cell/share/kr6_r900_cell/meshes/kr6_r900_2/collision/link_4.stl"/></geometry>
       <origin rpy="0 1.5708 0" xyz="-0.880 0 0.221"/>
     </collision>
     <inertial>
@@ -79,14 +79,14 @@
       <inertia ixx="0.010" ixy="0" ixz="0" iyy="0.044" iyz="0" izz="0.047"/>
     </inertial>
     <visual>
-      <geometry><mesh filename="package://kr6_r900_cell/meshes/kr6_r900_2/visual/link_4.dae"/></geometry>
+      <geometry><mesh filename="file:///home/genji/Robotics_industrial_RL/install/kr6_r900_cell/share/kr6_r900_cell/meshes/kr6_r900_2/visual/link_4.dae"/></geometry>
       <origin rpy="0 1.5708 0" xyz="-0.880 0 0.221"/>
     </visual>
   </link>
 
   <link name="link_5">
     <collision>
-      <geometry><mesh filename="package://kr6_r900_cell/meshes/kr6_r900_2/collision/link_5.stl"/></geometry>
+      <geometry><mesh filename="file:///home/genji/Robotics_industrial_RL/install/kr6_r900_cell/share/kr6_r900_cell/meshes/kr6_r900_2/collision/link_5.stl"/></geometry>
       <origin rpy="1.5708 0 0" xyz="-0.445 0.880 -0.050"/>
     </collision>
     <inertial>
@@ -95,14 +95,14 @@
       <inertia ixx="0.002" ixy="0" ixz="0" iyy="0.002" iyz="0" izz="0.002"/>
     </inertial>
     <visual>
-      <geometry><mesh filename="package://kr6_r900_cell/meshes/kr6_r900_2/visual/link_5.dae"/></geometry>
+      <geometry><mesh filename="file:///home/genji/Robotics_industrial_RL/install/kr6_r900_cell/share/kr6_r900_cell/meshes/kr6_r900_2/visual/link_5.dae"/></geometry>
       <origin rpy="1.5708 0 0" xyz="-0.445 0.880 -0.050"/>
     </visual>
   </link>
 
   <link name="link_6">
     <collision>
-      <geometry><mesh filename="package://kr6_r900_cell/meshes/kr6_r900_2/collision/link_6.stl"/></geometry>
+      <geometry><mesh filename="file:///home/genji/Robotics_industrial_RL/install/kr6_r900_cell/share/kr6_r900_cell/meshes/kr6_r900_2/collision/link_6.stl"/></geometry>
       <origin rpy="0 1.5708 0" xyz="-0.880 0 0.507"/>
     </collision>
     <inertial>
@@ -111,7 +111,7 @@
       <inertia ixx="0.000184" ixy="0" ixz="0" iyy="0.000182" iyz="0" izz="0.000296"/>
     </inertial>
     <visual>
-      <geometry><mesh filename="package://kr6_r900_cell/meshes/kr6_r900_2/visual/link_6.dae"/></geometry>
+      <geometry><mesh filename="file:///home/genji/Robotics_industrial_RL/install/kr6_r900_cell/share/kr6_r900_cell/meshes/kr6_r900_2/visual/link_6.dae"/></geometry>
       <origin rpy="0 1.5708 0" xyz="-0.880 0 0.507"/>
     </visual>
   </link>
@@ -190,5 +190,52 @@
     <child link="tool0"/>
     <origin rpy="3.14159 0 3.14159" xyz="0 0 -0.0285"/>
   </joint>
+
+  <!-- ros2_control for Gazebo simulation -->
+  <ros2_control name="kr6_r900_gazebo" type="system">
+    <hardware>
+      <plugin>gz_ros2_control/GazeboSimSystem</plugin>
+    </hardware>
+    <joint name="joint_1">
+      <command_interface name="position"/>
+      <state_interface name="position"><param name="initial_value">0.0</param></state_interface>
+      <state_interface name="velocity"/>
+    </joint>
+    <joint name="joint_2">
+      <command_interface name="position"/>
+      <state_interface name="position"><param name="initial_value">-1.5708</param></state_interface>
+      <state_interface name="velocity"/>
+    </joint>
+    <joint name="joint_3">
+      <command_interface name="position"/>
+      <state_interface name="position"><param name="initial_value">1.5708</param></state_interface>
+      <state_interface name="velocity"/>
+    </joint>
+    <joint name="joint_4">
+      <command_interface name="position"/>
+      <state_interface name="position"><param name="initial_value">0.0</param></state_interface>
+      <state_interface name="velocity"/>
+    </joint>
+    <joint name="joint_5">
+      <command_interface name="position"/>
+      <state_interface name="position"><param name="initial_value">0.0</param></state_interface>
+      <state_interface name="velocity"/>
+    </joint>
+    <joint name="joint_6">
+      <command_interface name="position"/>
+      <state_interface name="position"><param name="initial_value">0.0</param></state_interface>
+      <state_interface name="velocity"/>
+    </joint>
+  </ros2_control>
+
+  <!-- Gazebo ros2_control plugin -->
+  <gazebo>
+    <plugin filename="gz_ros2_control-system"
+            name="gz_ros2_control::GazeboSimROS2ControlPlugin">
+      <robot_param>robot_description</robot_param>
+      <robot_param_node>robot_state_publisher</robot_param_node>
+      <parameters>/home/genji/Robotics_industrial_RL/install/kr6_r900_cell/share/kr6_r900_cell/config/gazebo_controllers.yaml</parameters>
+    </plugin>
+  </gazebo>
 
 </robot>

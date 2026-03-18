@@ -1,5 +1,4 @@
 import os
-import yaml
 from launch import LaunchDescription
 from launch_ros.actions import Node
 from ament_index_python.packages import get_package_share_directory
@@ -17,7 +16,6 @@ def generate_launch_description():
     with open(srdf_file, 'r') as f:
         robot_description_semantic = f.read()
 
-    # inline dicts — guaranteed to reach move_group
     kinematics = {
         'robot_description_kinematics': {
             'manipulator': {
@@ -69,10 +67,19 @@ def generate_launch_description():
         parameters=[{'robot_description': robot_description_raw}],
     )
 
+    # joint_state_publisher with upright home position
     joint_state_publisher = Node(
         package='joint_state_publisher',
         executable='joint_state_publisher',
-        parameters=[{'robot_description': robot_description_raw}],
+        parameters=[{
+            'robot_description': robot_description_raw,
+            'zeros.joint_1':  0.0,
+            'zeros.joint_2': -1.5708,
+            'zeros.joint_3':  1.5708,
+            'zeros.joint_4':  0.0,
+            'zeros.joint_5':  0.0,
+            'zeros.joint_6':  0.0,
+        }],
     )
 
     move_group = Node(

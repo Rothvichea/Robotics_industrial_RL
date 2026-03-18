@@ -1,0 +1,162 @@
+<?xml version="1.0" ?>
+<sdf version="1.8">
+  <world name="inspection_cell">
+
+    <physics name="1ms" type="ignored">
+      <max_step_size>0.001</max_step_size>
+      <real_time_factor>1</real_time_factor>
+    </physics>
+
+    <plugin name="gz::sim::systems::Physics"          filename="ignition-gazebo-physics-system"/>
+    <plugin name="gz::sim::systems::UserCommands"     filename="ignition-gazebo-user-commands-system"/>
+    <plugin name="gz::sim::systems::SceneBroadcaster" filename="ignition-gazebo-scene-broadcaster-system"/>
+    <plugin name="gz::sim::systems::Contact"          filename="ignition-gazebo-contact-system"/>
+    <plugin name="gz::sim::systems::Sensors"          filename="ignition-gazebo-sensors-system">
+      <render_engine>ogre2</render_engine>
+    </plugin>
+
+    <light name="sun" type="directional">
+      <cast_shadows>true</cast_shadows>
+      <pose>0 0 10 0 0 0</pose>
+      <diffuse>1.0 1.0 1.0 1</diffuse>
+      <specular>0.3 0.3 0.3 1</specular>
+      <direction>0 0 -1</direction>
+    </light>
+
+    <light name="fill" type="directional">
+      <pose>0 0 5 0 0 0</pose>
+      <diffuse>0.6 0.6 0.6 1</diffuse>
+      <specular>0 0 0 1</specular>
+      <direction>0 0.1 -1</direction>
+      <cast_shadows>false</cast_shadows>
+    </light>
+
+    <scene>
+      <ambient>0.5 0.5 0.5 1</ambient>
+      <background>0.3 0.3 0.3 1</background>
+      <shadows>false</shadows>
+    </scene>
+
+    <!-- ground -->
+    <model name="ground_plane">
+      <static>true</static>
+      <link name="link">
+        <collision name="collision">
+          <geometry><plane><normal>0 0 1</normal><size>20 20</size></plane></geometry>
+        </collision>
+        <visual name="visual">
+          <geometry><plane><normal>0 0 1</normal><size>20 20</size></plane></geometry>
+          <material><ambient>0.3 0.3 0.3 1</ambient><diffuse>0.3 0.3 0.3 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+
+    <!-- inspection table -->
+    <model name="inspection_table">
+      <static>true</static>
+      <pose>0.6 0 0 0 0 0</pose>
+      <link name="link">
+        <collision name="top"><pose>0 0 0.525 0 0 0</pose>
+          <geometry><box><size>0.5 0.5 0.05</size></box></geometry></collision>
+        <visual name="top"><pose>0 0 0.525 0 0 0</pose>
+          <geometry><box><size>0.5 0.5 0.05</size></box></geometry>
+          <material><ambient>0.6 0.4 0.2 1</ambient><diffuse>0.6 0.4 0.2 1</diffuse></material></visual>
+        <visual name="leg1"><pose> 0.2  0.2 0.25 0 0 0</pose>
+          <geometry><cylinder><radius>0.02</radius><length>0.5</length></cylinder></geometry>
+          <material><ambient>0.2 0.2 0.2 1</ambient></material></visual>
+        <visual name="leg2"><pose>-0.2  0.2 0.25 0 0 0</pose>
+          <geometry><cylinder><radius>0.02</radius><length>0.5</length></cylinder></geometry>
+          <material><ambient>0.2 0.2 0.2 1</ambient></material></visual>
+        <visual name="leg3"><pose> 0.2 -0.2 0.25 0 0 0</pose>
+          <geometry><cylinder><radius>0.02</radius><length>0.5</length></cylinder></geometry>
+          <material><ambient>0.2 0.2 0.2 1</ambient></material></visual>
+        <visual name="leg4"><pose>-0.2 -0.2 0.25 0 0 0</pose>
+          <geometry><cylinder><radius>0.02</radius><length>0.5</length></cylinder></geometry>
+          <material><ambient>0.2 0.2 0.2 1</ambient></material></visual>
+      </link>
+    </model>
+
+    <!-- white inspection mat -->
+    <model name="inspection_mat">
+      <static>true</static>
+      <pose>0.6 0 0.551 0 0 0</pose>
+      <link name="link">
+        <visual name="visual">
+          <geometry><box><size>0.45 0.45 0.001</size></box></geometry>
+          <material><ambient>0.95 0.95 0.95 1</ambient><diffuse>0.95 0.95 0.95 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+
+    <!-- inspection box -->
+    <model name="inspection_box">
+      <pose>0.6 0 0.585 0 0 0</pose>
+      <link name="link">
+        <inertial><mass>0.1</mass>
+          <inertia><ixx>0.0001</ixx><iyy>0.0001</iyy><izz>0.0001</izz></inertia>
+        </inertial>
+        <collision name="collision">
+          <geometry><box><size>0.12 0.12 0.06</size></box></geometry>
+        </collision>
+        <visual name="visual">
+          <geometry><box><size>0.12 0.12 0.06</size></box></geometry>
+          <material><ambient>0.9 0.5 0.1 1</ambient><diffuse>0.9 0.5 0.1 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+
+    <!-- accept bin (green) -->
+    <model name="accept_bin">
+      <static>true</static>
+      <pose>0.6 0.4 0 0 0 0</pose>
+      <link name="link">
+        <collision name="c"><pose>0 0 0.1 0 0 0</pose>
+          <geometry><box><size>0.2 0.2 0.2</size></box></geometry></collision>
+        <visual name="v"><pose>0 0 0.1 0 0 0</pose>
+          <geometry><box><size>0.2 0.2 0.2</size></box></geometry>
+          <material><ambient>0.1 0.8 0.1 1</ambient><diffuse>0.1 0.8 0.1 1</diffuse></material></visual>
+      </link>
+    </model>
+
+    <!-- reject bin (red) -->
+    <model name="reject_bin">
+      <static>true</static>
+      <pose>0.6 -0.4 0 0 0 0</pose>
+      <link name="link">
+        <collision name="c"><pose>0 0 0.1 0 0 0</pose>
+          <geometry><box><size>0.2 0.2 0.2</size></box></geometry></collision>
+        <visual name="v"><pose>0 0 0.1 0 0 0</pose>
+          <geometry><box><size>0.2 0.2 0.2</size></box></geometry>
+          <material><ambient>0.8 0.1 0.1 1</ambient><diffuse>0.8 0.1 0.1 1</diffuse></material></visual>
+      </link>
+    </model>
+
+    <!-- overhead camera — Ignition native sensor -->
+    <model name="inspection_camera">
+      <static>true</static>
+      <pose>0.6 0 1.4 0 1.5708 0</pose>
+      <link name="link">
+        <visual name="visual">
+          <geometry><box><size>0.05 0.05 0.05</size></box></geometry>
+          <material><ambient>0.1 0.1 0.1 1</ambient></material>
+        </visual>
+        <sensor name="camera" type="camera">
+          <always_on>1</always_on>
+          <update_rate>10</update_rate>
+          <camera>
+            <horizontal_fov>0.8</horizontal_fov>
+            <image>
+              <width>640</width>
+              <height>640</height>
+              <format>R8G8B8</format>
+            </image>
+            <clip><near>0.1</near><far>10</far></clip>
+          </camera>
+          <topic>/inspection_cam/image_raw</topic>
+          <ignition_frame_id>camera_link</ignition_frame_id>
+        </sensor>
+      </link>
+    </model>
+
+  </world>
+</sdf>
