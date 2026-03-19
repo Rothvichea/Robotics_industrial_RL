@@ -14,6 +14,9 @@ install(
     scripts/dual_arm_trajectory.py
     scripts/yolo_inspector_node.py
     scripts/pick_place_node.py
+    scripts/vision_pick_node.py
+    scripts/multi_box_inspector.py
+    scripts/vacuum_controller.py
   DESTINATION lib/${PROJECT_NAME}
 )
 

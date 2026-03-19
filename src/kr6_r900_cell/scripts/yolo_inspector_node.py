@@ -36,6 +36,9 @@ TEST_IMAGES = {
     "screw_good":    os.path.expanduser("~/smart-factory-agent/data_test/screw_defect_02.png"),
 }
 
+# cycle through all 4 images to simulate mixed good/bad boxes
+TEST_CYCLE = ["bottle_defect", "bottle_good", "screw_defect", "bottle_good"]
+
 
 def ros_image_to_cv2(msg: Image) -> np.ndarray:
     """Convert ROS Image msg to cv2 BGR without cv_bridge."""
@@ -73,7 +76,7 @@ class YoloInspectorNode(Node):
 
         self.declare_parameter("product_type",   "bottle")
         self.declare_parameter("conf_threshold",  0.25)
-        self.declare_parameter("use_test_image",  True)
+        self.declare_parameter("use_test_image",  False)
         self.declare_parameter("test_image_key",  "bottle_defect")
 
         self.set_parameters([rclpy.parameter.Parameter(
@@ -109,6 +112,9 @@ class YoloInspectorNode(Node):
         dummy = np.zeros((640, 640, 3), dtype=np.uint8)
         self.model.predict(source=dummy, verbose=False)
 
+        cv2.namedWindow("YOLOv8 Live Inspection", cv2.WINDOW_NORMAL)
+        cv2.resizeWindow("YOLOv8 Live Inspection", 800, 800)
+
         self.get_logger().info(
             f"YoloInspectorNode ready | product={self.product_type} | "
             f"test_mode={self.use_test_img} | key={self.test_img_key}")
@@ -137,6 +143,16 @@ class YoloInspectorNode(Node):
         action     = "REJECT" if has_defect else "ACCEPT"
         max_conf   = max((d["confidence"] for d in detections), default=0.0)
 
+        # get best detection bbox
+        best_bbox = [0, 0, 640, 640]
+        best_cx   = 320
+        best_cy   = 320
+        if detections:
+            best = max(detections, key=lambda x: x["confidence"])
+            best_bbox = best["bbox"]
+            best_cx = int((best_bbox[0] + best_bbox[2]) / 2)
+            best_cy = int((best_bbox[1] + best_bbox[3]) / 2)
+
         result = {
             "frame":      self.frame_count,
             "product":    self.product_type,
@@ -145,18 +161,23 @@ class YoloInspectorNode(Node):
             "has_defect": has_defect,
             "confidence": round(max_conf, 4),
             "detections": len(detections),
+            "bbox":       best_bbox,
+            "cx":         best_cx,
+            "cy":         best_cy,
         }
 
         msg_out      = String()
         msg_out.data = json.dumps(result)
         self.pub_result.publish(msg_out)
 
-        self.get_logger().info(
-            f"Frame {self.frame_count:4d} | {verdict:6s} | "
-            f"conf={max_conf:.3f} | → {action}")
+        if not hasattr(self, "_last_verdict") or self._last_verdict != verdict:
+            self._last_verdict = verdict
+            self.get_logger().info(f"[{verdict}] conf={max_conf:.3f} → {action}")
 
         annotated = self._annotate(frame, result, detections)
         self.pub_image.publish(cv2_to_ros_image(annotated, msg.header))
+
+        cv2.imshow("YOLOv8 Live Inspection", annotated)
 
     def _annotate(self, frame, result, detections):
         vis   = frame.copy()
@@ -175,9 +196,16 @@ class YoloInspectorNode(Node):
 def main():
     rclpy.init()
     node = YoloInspectorNode()
-    rclpy.spin(node)
-    node.destroy_node()
-    rclpy.shutdown()
+    try:
+        while rclpy.ok():
+            rclpy.spin_once(node, timeout_sec=0.01)
+            key = cv2.waitKey(1)
+            if key == ord('q'):
+                break
+    finally:
+        cv2.destroyAllWindows()
+        node.destroy_node()
+        rclpy.shutdown()
 
 
 if __name__ == "__main__":

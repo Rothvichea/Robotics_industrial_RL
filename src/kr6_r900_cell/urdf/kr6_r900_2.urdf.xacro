@@ -208,7 +208,7 @@
     </joint>
     <joint name="joint_3">
       <command_interface name="position"/>
-      <state_interface name="position"><param name="initial_value">1.5708</param></state_interface>
+      <state_interface name="position"><param name="initial_value">0.0</param></state_interface>
       <state_interface name="velocity"/>
     </joint>
     <joint name="joint_4">
@@ -237,5 +237,15 @@
       <parameters>/home/genji/Robotics_industrial_RL/install/kr6_r900_cell/share/kr6_r900_cell/config/gazebo_controllers.yaml</parameters>
     </plugin>
   </gazebo>
+
+  <!-- vacuum gripper plugin for Ignition -->
+  <gazebo reference="suction_tip">
+    <mu1>100.0</mu1>
+    <mu2>100.0</mu2>
+  </gazebo>
+
+  <!-- suction cup gripper -->
+  <xacro:include filename="$(find kr6_r900_cell)/urdf/suction_cup.urdf.xacro"/>
+  <xacro:suction_cup parent="tool0"/>
 
 </robot>

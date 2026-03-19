@@ -157,6 +157,12 @@ def generate_launch_description():
         ],
     )
 
+    vacuum = Node(
+        package='kr6_r900_cell',
+        executable='vacuum_controller.py',
+        output='screen',
+    )
+
     return LaunchDescription([
         robot_state_publisher,
         gz_sim,
@@ -166,4 +172,5 @@ def generate_launch_description():
         TimerAction(period=9.0,  actions=[spawn_jtc]),
         TimerAction(period=11.0, actions=[move_group]),
         TimerAction(period=13.0, actions=[rviz]),
+        TimerAction(period=5.0,  actions=[vacuum]),
     ])
