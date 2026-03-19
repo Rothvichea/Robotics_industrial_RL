@@ -1,29 +1,12 @@
-# build artifacts
 build/
 install/
 log/
-
-# Python cache
 __pycache__/
 *.pyc
 *.pyo
-*.pyd
-.Python
-
-# RL logs and models (large files)
+*.so
 rl_logs/
 rl_models/
-
-# temp files
 test.txt
-/tmp/
-
-# IDE
 .vscode/
-.idea/
-
-# ROS logs
-~/.ros/log/
-
-# compiled python extensions
-*.so
+*.egg-info/
