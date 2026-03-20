@@ -83,7 +83,12 @@
   <disable_collisions link1="arm_2_link_3"    link2="arm_2_link_6" reason="Never"/>
   <disable_collisions link1="arm_2_link_4"    link2="arm_2_link_6" reason="Never"/>
 
-  <!-- bases never collide with each other -->
+  <!-- bases are fixed to ground and never move into each other -->
   <disable_collisions link1="arm_1_base_link" link2="arm_2_base_link" reason="Never"/>
+
+  <!-- cross-arm collision checking — deliberately NOT disabled so MoveIt
+       will flag any plan where arm_1 links would hit arm_2 links.
+       The inspector enforces this at the scheduling level via _table_lock:
+       only one arm occupies the table zone at a time. -->
 
 </robot>

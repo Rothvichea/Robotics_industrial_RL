@@ -6,17 +6,18 @@
 ![PyTorch](https://img.shields.io/badge/PyTorch-2.10-EE4C2C?style=for-the-badge&logo=pytorch&logoColor=white)
 ![CUDA](https://img.shields.io/badge/CUDA-12.8-76B900?style=for-the-badge&logo=nvidia&logoColor=white)
 ![Ignition](https://img.shields.io/badge/Ignition-Gazebo%20Fortress-FF6600?style=for-the-badge)
+![PPO](https://img.shields.io/badge/PPO-Stable--Baselines3-blueviolet?style=for-the-badge)
 
-**KUKA KR6 R900** autonomous quality-control cell combining real-time vision inspection with reinforcement-learning-optimised trajectory planning — built entirely in simulation using ROS 2, MoveIt 2, and Ignition Gazebo.
+Fully autonomous **dual-arm robotic inspection and sorting cell** built on ROS 2 Humble, MoveIt 2, and Ignition Gazebo Fortress. Two KUKA KR6 R900 arms are mounted on opposite sides of an inspection table. A top-down camera feeds YOLOv8 defect classification; the two arms sort objects into separate bins in parallel — **4 objects sorted in 7–9 seconds**.
 
 ---
 
 ## Motivation
 
-Industrial pick-and-place robots typically rely on hardcoded joint poses: brittle, manual to tune, and unable to adapt when objects shift. This project answers two questions:
+Industrial pick-and-place robots typically rely on hardcoded joint poses: brittle, manual to tune, and unable to adapt when object positions change. This project answers two questions:
 
-1. **Can a robot learn smooth, singularity-free trajectories by itself?** — Using PPO reinforcement learning with a shaped reward (goal proximity − jerk − singularity penalty), the agent achieves **100% success** in 3 minutes of training.
-2. **Can the robot decide where to pick based on what the camera sees?** — A YOLOv8 defect-detection pipeline classifies each item and the robot sorts it to the correct bin without any hardcoded object position.
+1. **Can a robot learn smooth, singularity-free trajectories by itself?** — A PPO agent with shaped reward achieves **100% success** in 3 minutes of training.
+2. **Can two arms collaborate on the same table without collision?** — A `table_lock` serialises access to the shared table zone while both arms fly to their bins simultaneously.
 
 ---
 
@@ -25,73 +26,88 @@ Industrial pick-and-place robots typically rely on hardcoded joint poses: brittl
 | Metric | Value |
 |---|---|
 | RL success rate | **100%** (20 / 20 goals) |
-| Avg steps to goal | **17.4** / 200 max |
+| Avg steps to goal | **17** / 200 max |
 | Avg jerk | **0.036** |
-| Explained variance | 0.934 |
-| Training time | **~3 min** (RTX 3060, 500k steps) |
-| YOLO bottle defect confidence | **90.5%** |
+| IK success rate | **100%** (after multi-seed retry + `avoid_collisions=False`) |
+| Objects sorted (dual arm parallel) | **4 boxes in 7–9 s** |
+| YOLOv8 defect confidence | **> 85%** |
+| Arm-to-arm collisions | **0** |
 
 ---
 
 ## Pipeline
 
 ```
-┌──────────────────────────────────────────────────────────────┐
-│                    Ignition Gazebo World                     │
-│                                                              │
-│   KUKA KR6 R900          Overhead Camera (z = 1.0 m)        │
-│   + Suction Cup          ↓  /inspection_cam/image_raw       │
-│   6-axis arm                                                 │
-│   gz_ros2_control        Inspection Table                   │
-│                          ├── box_defect_1  (bottle PNG)     │
-│                          ├── box_defect_2  (screw  PNG)     │
-│                          ├── box_good_1    (bottle PNG)     │
-│                          └── box_good_2    (screw  PNG)     │
-│                                                              │
-│   Accept Bin (green)     Reject Bin (red)                   │
-└──────────────────────────────────────────────────────────────┘
-              │                        │
-              ▼                        ▼
-┌─────────────────────┐    ┌────────────────────────┐
-│   Phase 1 – Scan    │    │   Phase 2 – Sort        │
-│                     │    │                         │
-│  OpenCV contours    │    │  Nearest-neighbour      │
-│  → object presence  │    │  visit order            │
-│                     │    │                         │
-│  YOLOv8 inference   │    │  IK cascade:            │
-│  → DEFECT / GOOD    │    │  approach → pick        │
-│                     │    │  → lift → place         │
-│  pixel → world XY   │    │                         │
-│  (pinhole model)    │    │  Vacuum simulation      │
-└─────────────────────┘    └────────────────────────┘
-              │                        │
-              └────────────┬───────────┘
+┌──────────────────────────────────────────────────────────────────┐
+│                     Ignition Gazebo World                        │
+│                                                                  │
+│  ARM 1 (0,0,0) yaw=0          Camera (0.6, 0, 1.0) → down      │
+│  → picks DEFECT → REJECT bin                                     │
+│                    Inspection Table (x≈0.6)                     │
+│                    ├── box_defect_1  (bottle)                    │
+│                    ├── box_defect_2  (screw)                     │
+│                    ├── box_good_1    (bottle)                    │
+│                    └── box_good_2    (screw)                     │
+│  ARM 2 (1.2,0,0) yaw=π                                          │
+│  → picks GOOD   → ACCEPT bin                                    │
+└──────────────────────────────────────────────────────────────────┘
+              │                         │
+              ▼                         ▼
+┌──────────────────────┐   ┌──────────────────────────┐
+│   Phase 1 – Scan     │   │   Phase 2 – Sort          │
+│                      │   │                           │
+│  OpenCV contours     │   │  Nearest-neighbour order  │
+│  → object presence   │   │                           │
+│                      │   │  IK cascade (KDL):        │
+│  YOLOv8 inference    │   │  pre_pick → approach      │
+│  → DEFECT / GOOD     │   │  → pick → lift → place    │
+│                      │   │                           │
+│  pixel → world XY    │   │  table_lock: ARM1 / ARM2  │
+│  (pinhole model)     │   │  share table zone safely  │
+└──────────────────────┘   └──────────────────────────┘
+              │                         │
+              └────────────┬────────────┘
                            ▼
-              FollowJointTrajectory
-              /joint_trajectory_controller
+          /arm_1_controller/follow_joint_trajectory
+          /arm_2_controller/follow_joint_trajectory
+          (parallel execution — no stop-start)
 ```
 
 ---
 
 ## Architecture
 
-### Camera Geometry
+### Coordinate Frames
 
-The overhead camera is mounted at `(0.6, 0, 1.0)` m, pitched `π/2` (pointing straight down). Pixel-to-world conversion uses the pinhole model:
+ARM 2 sits at `(1.2, 0, 0)` facing `−X` (yaw = π). All box positions are in the world frame. The transform to ARM 2's local frame:
 
 ```
-scale   = W / (2 · tan(FOV/2) · (z_cam − z_table))
-world_y = (col − W/2) / scale
-world_x = x_cam − (row − H/2) / scale
+local_x = 1.2 − world_x
+local_y = −world_y
 ```
 
 ### IK Cascade
 
-All four IK solutions are computed before any motion begins, with each seeding the next to prevent KDL wrist flips:
+All four IK solutions are computed before any motion begins, each seeding the next. Approach always uses `pre_pick(lx, ly)` as seed — never the previous bin configuration — to prevent KDL from finding the "back-of-robot" mirror solution:
 
 ```
-q_seed  →  q_approach  →  q_pick  →  q_lift  →  q_place
+pre_pick  →  q_approach  →  q_pick  →  q_lift  →  q_place
 ```
+
+`pre_pick` is computed analytically:
+
+```
+pre_pick(lx, ly) = [atan2(ly, lx), -0.9, 0.7, 0.0, -0.8, 0.0]
+```
+
+### Collision Avoidance Strategy
+
+| Layer | Mechanism |
+|---|---|
+| Table zone | `table_lock` — only one arm in the table zone at a time |
+| IK stage | `avoid_collisions=False` — MoveIt collision check disabled (physical safety via lock) |
+| Bin zone | No lock needed — ARM 1 flies to reject bin (y=−0.45), ARM 2 to accept bin (y=+0.45), no spatial overlap |
+| IK service | `ik_lock` — prevents concurrent async IK calls to `/compute_ik` |
 
 ### RL Environment
 
@@ -99,31 +115,46 @@ q_seed  →  q_approach  →  q_pick  →  q_lift  →  q_place
 |---|---|
 | Observation | joint positions (6) + velocities (6) + goal (6) = 18-dim |
 | Action | joint position deltas, clipped to ±0.05 rad/step |
-| Reward | −2·dist + smoothness − 0.5·jerk − singularity_penalty + 50 (on reach) |
-| Termination | dist < 0.05 rad (success) or 200 steps (timeout) |
+| Reward | −2·dist + smoothness − 0.5·jerk − singularity_penalty + 50 (reach) |
 | Algorithm | PPO · MlpPolicy · net [256, 256] · 8 parallel envs |
+| Training | 500k steps · ~3 min · RTX 3060 |
 
 ---
 
-## What Was Built
+## Development Phases
 
-### Phase 1 — KR6 R900 URDF + MoveIt 2
-Clean standalone ROS 2 package with self-contained URDF, SRDF planning groups (`manipulator`, `end_effector`, named states), KDL kinematics, and OMPL planning pipeline.
+### Phase 1 — Single-Arm URDF + Gazebo Cell
+Clean standalone ROS 2 package. KR6 R900 URDF, SRDF planning groups, `gz_ros2_control` verified with all 6 joints active.
 
-### Phase 2 — Trajectory Planning
-MoveIt 2 action client for joint-goal execution. 5-pose sequence visualised as ghost trajectories in RViz2 via `DisplayTrajectory`.
+### Phase 2 — MoveIt 2 Integration
+KDL kinematics, OMPL planner, SRDF collision pairs, RViz MoveIt plugin for manual trajectory testing.
 
 ### Phase 3 — Dual Arm Cell
-xacro macro architecture. Two KR6 arms (`arm_1_`, `arm_2_`) placed 1.2 m apart with a combined `dual_arm` subgroup. Synchronized trajectory planning with inter-arm collision avoidance.
+xacro macro with `yaw` parameter. ARM 1 at `(0,0,0)`, ARM 2 at `(1.2,0,0)` facing inward. Home: `joint_2 = −π/2`, all others = 0 (arms straight up). Two independent `JointTrajectoryController` instances.
 
 ### Phase 4 — PPO RL Trajectory Optimizer
-Custom Gymnasium environment. 500k-step PPO training in 3 minutes. **100% goal success, avg 17.4 steps, jerk = 0.036.**
+Custom Gymnasium environment. **100% success, avg 17 steps, jerk = 0.036.** Training in 3 minutes.
 
-### Phase 5 — Vision QC + Qt6 Dashboard
-`PrintMonitor` (YOLOv8 defect detection on print frames) + RL vision feedback loop (slow down / replan / abort on defect severity) + live Qt6 dashboard with joint bars, RL metrics, and event log.
+### Phase 5a — RL + YOLO Feedback Loop
+PPO agent connected to live YOLOv8 print-quality monitor. Defect severity triggers slow-down / replan / abort. 10/10 trials succeeded.
 
-### Phase 6 — Ignition Gazebo Inspection Cell
-Custom SDF world: inspection table, 4 PBR-textured boxes (real bottle/screw images on top face), green/red bins, overhead camera bridged to ROS 2. Full `gz_ros2_control` pipeline with suction cup URDF. Multi-box inspector: contour detection + per-box YOLO classification + nearest-neighbour pick-and-place sort.
+### Phase 5b — PyQt6 Live Dashboard
+3-column Qt6 window: ARM 1/2 joint bars, status badges, vision QC counters, RL decision feed, timestamped event log.
+
+### Phase 6 — Vision-Guided Pick & Place
+`multi_box_inspector.py`: camera → OpenCV contours → pixel-to-world → YOLOv8 → IK cascade → parallel pick-and-place.
+
+### Phase 7 — Suction Cups on Both Arms
+`suction_cup.urdf.xacro` extended with `prefix` parameter. Mounted on both `arm_1_tool0` and `arm_2_tool0`. Box teleportation via `ign service /world/inspection_cell/set_pose`.
+
+### Phase 8 — Collision Avoidance + Parallel Execution
+`table_lock` for mutual exclusion in shared table zone. Both arms fly to bins simultaneously after lifting. `ik_lock` serialises `/compute_ik` service calls.
+
+### Phase 9 — IK Robustness Fixes
+11-seed retry loop with `atan2(y,x)` bias for `joint_1`. Name-based joint extraction (not `position[:6]`). `avoid_collisions=False` at IK stage.
+
+### Phase 10 — Speed Optimisation
+~40% reduction in total cycle time. 4 boxes sorted in **7–9 s** (down from 12–15 s).
 
 ---
 
@@ -133,35 +164,28 @@ Custom SDF world: inspection table, 4 PBR-textured boxes (real bottle/screw imag
 Robotics_industrial_RL/
 ├── src/kr6_r900_cell/
 │   ├── urdf/
-│   │   ├── kr6_r900_2.urdf.xacro      # main robot + ros2_control
-│   │   ├── kr6_r900_macro.xacro        # reusable arm macro
-│   │   ├── kr6_dual_arm.urdf.xacro     # dual arm cell
-│   │   └── suction_cup.urdf.xacro      # vacuum end-effector
+│   │   ├── kr6_r900_macro.xacro        # single-arm macro (yaw param)
+│   │   ├── kr6_dual_arm.urdf.xacro     # ARM 1 + ARM 2 + suction cups
+│   │   └── suction_cup.urdf.xacro      # suction cup (prefix param)
 │   ├── srdf/
-│   │   ├── kr6_r900_2.srdf             # single arm groups
-│   │   └── kr6_dual_arm.srdf           # dual arm groups
+│   │   └── kr6_dual_arm.srdf           # arm_1, arm_2, dual_arm groups
 │   ├── config/
-│   │   ├── gazebo_controllers.yaml     # ros2_control config
+│   │   ├── dual_arm_controllers.yaml   # two JointTrajectoryControllers
+│   │   ├── kinematics.yaml             # KDL for arm_1 + arm_2
 │   │   ├── ompl_planning.yaml          # OMPL + time parameterization
-│   │   └── moveit.rviz                 # saved RViz2 layout
+│   │   └── joint_limits.yaml           # per-joint velocity limits
 │   ├── launch/
-│   │   ├── display_moveit.launch.py    # RViz2 + MoveIt (no sim)
-│   │   ├── dual_arm_moveit.launch.py   # dual arm cell
-│   │   └── inspection_cell.launch.py   # full Gazebo cell
+│   │   └── dual_arm_inspection.launch.py  # full-stack launch
 │   ├── worlds/
-│   │   └── inspection_cell.sdf         # Ignition Gazebo world
+│   │   └── inspection_cell.sdf         # Ignition world
 │   ├── scripts/
-│   │   ├── multi_box_inspector.py      # main inspection pipeline
-│   │   ├── vision_pick_node.py         # IK-based vision-guided pick
-│   │   ├── vacuum_controller.py        # suction cup controller
-│   │   └── yolo_inspector_node.py      # YOLO ROS 2 node
+│   │   ├── multi_box_inspector.py      # main orchestrator
+│   │   └── dual_arm_dashboard.py       # PyQt6 live dashboard
 │   └── kr6_rl/
 │       ├── kr6_env.py                  # Gymnasium environment
 │       ├── train_ppo.py                # PPO training
-│       ├── eval_ppo.py                 # evaluation + metrics
-│       ├── print_monitor.py            # print quality monitor
-│       ├── rl_vision_loop.py           # RL + vision feedback
-│       └── dashboard.py               # Qt6 live dashboard
+│       ├── eval_ppo.py                 # evaluation
+│       └── rl_vision_loop.py           # RL + YOLO feedback
 ```
 
 ---
@@ -169,26 +193,43 @@ Robotics_industrial_RL/
 ## Quick Start
 
 ```bash
-# Build
+# 1. Build
 cd ~/Robotics_industrial_RL
 colcon build --symlink-install
 source install/setup.bash
 
-# Launch simulation cell (Ignition + MoveIt 2 + controllers)
-ros2 launch kr6_r900_cell inspection_cell.launch.py
+# 2. Launch full stack
+ros2 launch kr6_r900_cell dual_arm_inspection.launch.py
+# wait for: "All is well! Everyone is happy!"
 
-# Wait ~13s for controllers to activate, then run inspection
+# 3. Run inspector
 /usr/bin/python3 src/kr6_r900_cell/scripts/multi_box_inspector.py
 
-# RL training (requires conda env with PyTorch)
+# 4. Live dashboard (optional)
+/usr/bin/python3 src/kr6_r900_cell/scripts/dual_arm_dashboard.py
+
+# RL training (conda env)
 conda activate industrial-ai
 cd src/kr6_r900_cell/kr6_rl
-python3 train_ppo.py        # trains in ~3 min
-python3 eval_ppo.py         # 100% success rate
-
-# Qt6 live dashboard
-python3 dashboard.py
+python3 train_ppo.py    # ~3 min
+python3 eval_ppo.py     # 100% success
 ```
+
+---
+
+## ROS 2 Topics
+
+| Topic | Direction | Description |
+|---|---|---|
+| `/joint_states` | Subscribe | All 12 joint positions (both arms) |
+| `/inspection_cam/image_raw` | Subscribe | RGB camera over table |
+| `/arm_1_controller/follow_joint_trajectory` | Action | ARM 1 trajectory execution |
+| `/arm_2_controller/follow_joint_trajectory` | Action | ARM 2 trajectory execution |
+| `/compute_ik` | Service | MoveIt KDL IK solver |
+| `/inspection/result` | Publish | JSON: verdict, confidence, action |
+| `/arm_1/status` | Publish | IDLE / PICKING / PLACING / DONE |
+| `/arm_2/status` | Publish | IDLE / PICKING / PLACING / DONE |
+| `/rl/decision` | Publish | RL agent decision string |
 
 ---
 
@@ -198,13 +239,13 @@ python3 dashboard.py
 |---|---|
 | Robot middleware | ROS 2 Humble |
 | Motion planning | MoveIt 2 — OMPL + KDL IK |
-| Simulation | Ignition Gazebo Fortress |
-| Vision — defect | YOLOv8 (ultralytics 8.4) |
+| Simulation | Ignition Gazebo Fortress 6.x |
+| Vision — defect | YOLOv8 (ultralytics ≥ 8.0) |
 | Vision — presence | OpenCV contour detection |
-| RL framework | Stable-Baselines3 2.7 · PPO |
+| RL framework | Stable-Baselines3 ≥ 1.8 · PPO |
 | Joint control | ros2_controllers — FollowJointTrajectory |
-| Dashboard | PyQt6 |
-| Robot model | KUKA KR6 R900 (6-axis, 900 mm reach) |
+| Dashboard | PyQt6 ≥ 6.4 |
+| Robot model | KUKA KR6 R900 (6-axis, 900 mm reach) × 2 |
 | GPU | NVIDIA RTX 3060 · CUDA 12.8 |
 | OS | Ubuntu 22.04 LTS |
 
@@ -212,49 +253,50 @@ python3 dashboard.py
 
 ## Key Engineering Decisions
 
-**Why direct FollowJointTrajectory instead of MoveIt execution?**
-MoveIt's trajectory execution manager requires clock synchronization between `move_group` (wall time) and Ignition Gazebo (sim time). Sending multi-waypoint trajectories directly to the controller bypasses this entirely and produces smoother continuous motion — all waypoints interpolated in one action goal rather than stop-start single-point goals.
+**Why `avoid_collisions=False` at the IK stage?**
+While ARM 2 is mid-trajectory, MoveIt's planning scene reflects its intermediate link positions. ARM 1 computing IK concurrently would have valid approach poses rejected as "colliding" with ARM 2's current position. Setting `avoid_collisions=False` at the IK stage disables this. Physical safety is guaranteed by `table_lock` — the two arms never enter the table zone simultaneously.
 
-**Why contour detection for presence + YOLO for defect?**
-YOLO defect models are trained to detect flaws, not object presence. A good (non-defective) item produces no YOLO detection. Contour detection catches it on the white mat and correctly labels it GOOD. Separating the two problems avoids false negatives on acceptable items.
+**Why `table_lock` instead of MoveIt collision checking?**
+MoveIt collision avoidance plans around static obstacles. Moving arms are not static. A threading lock is simpler, faster, and guaranteed correct for this specific geometry.
 
-**Why IK cascade seeding?**
-KDL is an iterative Jacobian solver. For a suction cup pointing straight down, `joint_4` (forearm roll) lies in the null space — any rotation is valid. Without seeding each IK call from the previous solution, KDL can converge to a wrist-flip solution (joint_4 ± π from seed), causing a 360° unnecessary rotation. Cascaded seeding with 7 alternative seeds eliminates this in practice.
+**Why `pre_pick` as IK seed?**
+KDL is seed-sensitive. For a suction cup pointing straight down, `joint_4` lies in the null space — any rotation is valid. Without a good seed, KDL converges to wrist-flip solutions. `pre_pick` biases the solver toward the "arm over table" configuration and eliminates 360° joint spins.
 
-**Why PPO over SAC or TD3?**
-The task is episodic with a clear terminal condition. PPO's on-policy rollouts are better suited than off-policy methods, and the discrete episode structure makes reward shaping straightforward. 8 parallel envs bring training to 3 minutes — fast enough for rapid iteration on reward design.
+**Why direct `FollowJointTrajectory` instead of MoveIt execution?**
+MoveIt's trajectory execution requires clock synchronization between `move_group` and Ignition (sim time vs wall time). Sending multi-waypoint trajectories directly to the controller bypasses this and produces smooth continuous motion.
 
 ---
 
 ## Roadmap
 
 ### Completed ✓
-- [x] KR6 R900 clean URDF + MoveIt 2 package
-- [x] Single arm trajectory planning + RViz2 visualization
-- [x] Dual arm cell with inter-arm collision avoidance
-- [x] PPO RL optimizer — 100% success, jerk = 0.036
-- [x] YOLOv8 print monitor + RL vision feedback loop
-- [x] Qt6 live dashboard
-- [x] Ignition Gazebo inspection cell — textured boxes, bins, camera
+- [x] Single arm URDF + MoveIt 2 + RViz2
+- [x] Trajectory planning + ghost visualization
+- [x] Dual arm cell (xacro macro, opposite sides, yaw=π)
+- [x] PPO RL optimizer — 100% success, jerk=0.036
+- [x] YOLOv8 print monitor + RL feedback loop
+- [x] PyQt6 live dashboard (joint bars, status, QC, RL feed)
+- [x] Ignition inspection cell (textured boxes, bins, camera)
 - [x] Vision-guided pick — pixel → world → IK → trajectory
-- [x] Suction cup URDF + vacuum simulation
-- [x] Multi-box inspection + nearest-neighbour sort
+- [x] Suction cups on both arms + box teleportation
+- [x] Parallel dual-arm execution with table_lock
+- [x] IK robustness (11-seed retry, name extraction, ik_lock)
+- [x] Speed optimization — 4 boxes in 7–9 s
 
 ### Near-term 🔧
-- [ ] Downward suction approach — wrist orientation fix, KDL null-space correction
-- [ ] Real-time per-box YOLO from Gazebo camera (close-up crop approach)
+- [ ] Real suction physics (vacuum pressure feedback)
 - [ ] Conveyor belt for continuous item flow
-- [ ] ISO 13485 / EN 9100 structured inspection logging
+- [ ] ISO 13485 / EN 9100 inspection logging
 
 ### VLA Direction 🤖
 
-The long-term goal is to replace explicit motion planning with a **Vision-Language-Action model** that takes raw camera feed + natural language instructions and outputs joint trajectories directly:
+The long-term goal is a **Vision-Language-Action model** replacing explicit motion planning:
 
-- **"Pick up all defective screws"** → robot executes without any hardcoded poses
-- Zero-shot generalization to unseen object categories
-- Claude Vision API for semantic defect reasoning (partially implemented in the Smart Factory agent)
-- Fine-tune OpenVLA or similar on simulated pick-and-place demonstrations
-- Language-conditioned motion generation replacing KDL + OMPL
+- Natural language instructions → joint trajectories directly
+- Zero-shot generalization to unseen object categories  
+- Claude Vision API for semantic defect reasoning
+- Fine-tune OpenVLA on simulated demonstrations
+- Language-conditioned motion replacing KDL + OMPL
 
 ---
 
@@ -262,10 +304,10 @@ The long-term goal is to replace explicit motion planning with a **Vision-Langua
 
 | Project | Description |
 |---|---|
-| [smart-factory-agent](https://github.com/Rothvichea) | YOLOv8 + PPO + Claude VLM API — end-to-end MLOps factory platform |
-| [segformer-tensorrt](https://github.com/Rothvichea) | SegFormer-b0 TensorRT FP32 — 1.70× speedup, 138 FPS, FP16 overflow analysis |
-| [Safety Detection](https://github.com/Rothvichea) | Real-time PPE compliance + dynamic danger zone enforcement (ISO 10218-1) |
-| [industrial-gnn-predictive-maintenance](https://github.com/Rothvichea/industrial-gnn-predictive-maintenance) | 1D-CNN + GraphSAGE bearing fault detection — 99.10% accuracy |
+| [smart-factory-agent](https://github.com/Rothvichea) | YOLOv8 + PPO + Claude VLM — end-to-end MLOps factory platform |
+| [segformer-tensorrt](https://github.com/Rothvichea) | SegFormer-b0 TensorRT FP32 — 1.70× speedup, 138 FPS |
+| [Safety Detection](https://github.com/Rothvichea) | PPE compliance + dynamic danger zones (ISO 10218-1) |
+| [industrial-gnn-predictive-maintenance](https://github.com/Rothvichea/industrial-gnn-predictive-maintenance) | 1D-CNN + GraphSAGE bearing fault — 99.10% accuracy |
 
 ---
 

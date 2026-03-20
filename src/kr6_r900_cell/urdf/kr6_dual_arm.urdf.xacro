@@ -2,14 +2,103 @@
 <robot xmlns:xacro="http://ros.org/wiki/xacro" name="kr6_dual_arm">
 
   <xacro:include filename="$(find kr6_r900_cell)/urdf/kr6_r900_macro.xacro"/>
+  <xacro:include filename="$(find kr6_r900_cell)/urdf/suction_cup.urdf.xacro"/>
 
   <!-- world link -->
   <link name="world"/>
 
-  <!-- arm_1 at origin -->
-  <xacro:kr6_r900 prefix="arm_1_" parent="world" x="0"   y="-0.6" z="0"/>
+  <!-- arm_1 — near side (x=0), faces +x toward table at x=0.6 -->
+  <xacro:kr6_r900 prefix="arm_1_" parent="world" x="0" y="0" z="0" yaw="0"/>
 
-  <!-- arm_2 offset 1.2m on Y, rotated 180deg to face arm_1 -->
-  <xacro:kr6_r900 prefix="arm_2_" parent="world" x="0"   y="0.6"  z="0"/>
+  <!-- arm_2 — far side (x=1.2), faces -x toward table, rotated 180° -->
+  <xacro:kr6_r900 prefix="arm_2_" parent="world" x="1.2" y="0" z="0" yaw="3.14159"/>
+
+  <!-- suction cups on both arms (prefix avoids duplicate link names) -->
+  <xacro:suction_cup parent="arm_1_tool0" prefix="arm_1_"/>
+  <xacro:suction_cup parent="arm_2_tool0" prefix="arm_2_"/>
+
+  <!-- ros2_control for arm_1 -->
+  <ros2_control name="arm_1_control" type="system">
+    <hardware>
+      <plugin>gz_ros2_control/GazeboSimSystem</plugin>
+    </hardware>
+    <joint name="arm_1_joint_1">
+      <command_interface name="position"/>
+      <state_interface name="position"><param name="initial_value">0.0</param></state_interface>
+      <state_interface name="velocity"/>
+    </joint>
+    <joint name="arm_1_joint_2">
+      <command_interface name="position"/>
+      <state_interface name="position"><param name="initial_value">-1.5708</param></state_interface>
+      <state_interface name="velocity"/>
+    </joint>
+    <joint name="arm_1_joint_3">
+      <command_interface name="position"/>
+      <state_interface name="position"><param name="initial_value">0.0</param></state_interface>
+      <state_interface name="velocity"/>
+    </joint>
+    <joint name="arm_1_joint_4">
+      <command_interface name="position"/>
+      <state_interface name="position"><param name="initial_value">0.0</param></state_interface>
+      <state_interface name="velocity"/>
+    </joint>
+    <joint name="arm_1_joint_5">
+      <command_interface name="position"/>
+      <state_interface name="position"><param name="initial_value">0.0</param></state_interface>
+      <state_interface name="velocity"/>
+    </joint>
+    <joint name="arm_1_joint_6">
+      <command_interface name="position"/>
+      <state_interface name="position"><param name="initial_value">0.0</param></state_interface>
+      <state_interface name="velocity"/>
+    </joint>
+  </ros2_control>
+
+  <!-- ros2_control for arm_2 -->
+  <ros2_control name="arm_2_control" type="system">
+    <hardware>
+      <plugin>gz_ros2_control/GazeboSimSystem</plugin>
+    </hardware>
+    <joint name="arm_2_joint_1">
+      <command_interface name="position"/>
+      <state_interface name="position"><param name="initial_value">0.0</param></state_interface>
+      <state_interface name="velocity"/>
+    </joint>
+    <joint name="arm_2_joint_2">
+      <command_interface name="position"/>
+      <state_interface name="position"><param name="initial_value">-1.5708</param></state_interface>
+      <state_interface name="velocity"/>
+    </joint>
+    <joint name="arm_2_joint_3">
+      <command_interface name="position"/>
+      <state_interface name="position"><param name="initial_value">0.0</param></state_interface>
+      <state_interface name="velocity"/>
+    </joint>
+    <joint name="arm_2_joint_4">
+      <command_interface name="position"/>
+      <state_interface name="position"><param name="initial_value">0.0</param></state_interface>
+      <state_interface name="velocity"/>
+    </joint>
+    <joint name="arm_2_joint_5">
+      <command_interface name="position"/>
+      <state_interface name="position"><param name="initial_value">0.0</param></state_interface>
+      <state_interface name="velocity"/>
+    </joint>
+    <joint name="arm_2_joint_6">
+      <command_interface name="position"/>
+      <state_interface name="position"><param name="initial_value">0.0</param></state_interface>
+      <state_interface name="velocity"/>
+    </joint>
+  </ros2_control>
+
+  <!-- Ignition gz_ros2_control plugin -->
+  <gazebo>
+    <plugin filename="gz_ros2_control-system"
+            name="gz_ros2_control::GazeboSimROS2ControlPlugin">
+      <robot_param>robot_description</robot_param>
+      <robot_param_node>robot_state_publisher</robot_param_node>
+      <parameters>/home/genji/Robotics_industrial_RL/install/kr6_r900_cell/share/kr6_r900_cell/config/dual_arm_controllers.yaml</parameters>
+    </plugin>
+  </gazebo>
 
 </robot>

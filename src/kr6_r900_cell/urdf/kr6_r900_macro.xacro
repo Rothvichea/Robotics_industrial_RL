@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <robot xmlns:xacro="http://ros.org/wiki/xacro">
-<xacro:macro name="kr6_r900" params="prefix parent x y z">
+<xacro:macro name="kr6_r900" params="prefix parent x y z yaw:=0">
 
   <link name="${prefix}base_link">
     <collision>
@@ -123,7 +123,7 @@
   <joint name="${prefix}world_to_base" type="fixed">
     <parent link="${parent}"/>
     <child link="${prefix}base_link"/>
-    <origin xyz="${x} ${y} ${z}" rpy="0 0 0"/>
+    <origin xyz="${x} ${y} ${z}" rpy="0 0 ${yaw}"/>
   </joint>
 
   <joint name="${prefix}base_link_to_base" type="fixed">

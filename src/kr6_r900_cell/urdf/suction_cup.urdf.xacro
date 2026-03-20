@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <robot xmlns:xacro="http://ros.org/wiki/xacro">
-<xacro:macro name="suction_cup" params="parent">
+<xacro:macro name="suction_cup" params="parent prefix:=''">
 
   <!-- suction cup mount -->
-  <link name="suction_mount">
+  <link name="${prefix}suction_mount">
     <visual>
       <geometry><cylinder radius="0.02" length="0.05"/></geometry>
       <origin rpy="0 0 0" xyz="0 0 0.025"/>
@@ -22,7 +22,7 @@
   </link>
 
   <!-- suction cup bellows -->
-  <link name="suction_bellows">
+  <link name="${prefix}suction_bellows">
     <visual>
       <geometry><cylinder radius="0.018" length="0.015"/></geometry>
       <origin rpy="0 0 0" xyz="0 0 0.0075"/>
@@ -37,7 +37,7 @@
   </link>
 
   <!-- suction tip — contact point -->
-  <link name="suction_tip">
+  <link name="${prefix}suction_tip">
     <visual>
       <geometry><cylinder radius="0.022" length="0.003"/></geometry>
       <origin rpy="0 0 0" xyz="0 0 0"/>
@@ -56,21 +56,21 @@
   </link>
 
   <!-- joints -->
-  <joint name="tool0_to_suction_mount" type="fixed">
+  <joint name="${prefix}tool0_to_suction_mount" type="fixed">
     <parent link="${parent}"/>
-    <child link="suction_mount"/>
+    <child link="${prefix}suction_mount"/>
     <origin rpy="0 0 0" xyz="0 0 0"/>
   </joint>
 
-  <joint name="suction_mount_to_bellows" type="fixed">
-    <parent link="suction_mount"/>
-    <child link="suction_bellows"/>
+  <joint name="${prefix}suction_mount_to_bellows" type="fixed">
+    <parent link="${prefix}suction_mount"/>
+    <child link="${prefix}suction_bellows"/>
     <origin rpy="0 0 0" xyz="0 0 0.05"/>
   </joint>
 
-  <joint name="suction_bellows_to_tip" type="fixed">
-    <parent link="suction_bellows"/>
-    <child link="suction_tip"/>
+  <joint name="${prefix}suction_bellows_to_tip" type="fixed">
+    <parent link="${prefix}suction_bellows"/>
+    <child link="${prefix}suction_tip"/>
     <origin rpy="0 0 0" xyz="0 0 0.015"/>
   </joint>
 

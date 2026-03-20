@@ -19,6 +19,7 @@ from rclpy.action import ActionClient
 from rclpy.callback_groups import ReentrantCallbackGroup
 from rclpy.executors import MultiThreadedExecutor
 from sensor_msgs.msg import Image, JointState
+from std_msgs.msg import String
 from control_msgs.action import FollowJointTrajectory
 from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
 from builtin_interfaces.msg import Duration
@@ -29,8 +30,12 @@ from ultralytics import YOLO
 import cv2, numpy as np
 
 
-# ─── Joint names ──────────────────────────────────────────────────────────────
-JOINT_NAMES = [f"joint_{i}" for i in range(1, 7)]
+# ─── Arm config — auto-detected in __init__ ───────────────────────────────────
+# Single-arm fallback defaults (overwritten at runtime for dual-arm mode).
+JOINT_NAMES      = [f"joint_{i}" for i in range(1, 7)]
+CONTROLLER_NS    = "/joint_trajectory_controller/follow_joint_trajectory"
+MOVEIT_GROUP     = "manipulator"
+BASE_LINK        = "base_link"
 
 # ─── YOLO models ──────────────────────────────────────────────────────────────
 MODELS = {
@@ -54,6 +59,31 @@ PLACE_Z     = 0.48                              # drop over bin
 # Bin world positions
 ACCEPT_BIN = (0.6,  0.45)
 REJECT_BIN = (0.6, -0.45)
+
+# ─── Dual-arm config (defined after bins so they can be referenced) ───────────
+# arm_2 is at world x=1.2 facing -x (yaw=π).
+# World → arm_2 local:  lx = 1.2 - wx,  ly = -wy
+ARM2_BASE_X = 1.2
+ARM_CFG = {
+    1: {
+        "joints":    [f"arm_1_joint_{i}" for i in range(1, 7)],
+        "ctrl":      "/arm_1_controller/follow_joint_trajectory",
+        "group":     "arm_1",
+        "base":      "arm_1_base_link",
+        "verdict":   "DEFECT",
+        "bin":       REJECT_BIN,
+        "to_local":  lambda wx, wy: (wx, wy),
+    },
+    2: {
+        "joints":    [f"arm_2_joint_{i}" for i in range(1, 7)],
+        "ctrl":      "/arm_2_controller/follow_joint_trajectory",
+        "group":     "arm_2",
+        "base":      "arm_2_base_link",
+        "verdict":   "GOOD",
+        "bin":       ACCEPT_BIN,
+        "to_local":  lambda wx, wy: (ARM2_BASE_X - wx, -wy),
+    },
+}
 
 # Box center Z when "carried" at LIFT_Z and PLACE_Z
 def carried_z(tool0_z):
@@ -107,10 +137,37 @@ class MultiBoxInspector(Node):
         super().__init__("multi_box_inspector")
         cb = ReentrantCallbackGroup()
 
+        # ── auto-detect single-arm vs dual-arm setup ──────────────────────────
+        global JOINT_NAMES, CONTROLLER_NS, MOVEIT_GROUP, BASE_LINK
+        try:
+            _actions = subprocess.run(
+                ["ros2", "action", "list"], capture_output=True, text=True, timeout=5
+            ).stdout
+        except Exception:
+            _actions = ""
+
+        self._dual_arm = "/arm_1_controller/follow_joint_trajectory" in _actions
+
+        if self._dual_arm:
+            JOINT_NAMES   = ARM_CFG[1]["joints"]
+            CONTROLLER_NS = ARM_CFG[1]["ctrl"]
+            MOVEIT_GROUP  = ARM_CFG[1]["group"]
+            BASE_LINK     = ARM_CFG[1]["base"]
+            self.get_logger().info("Auto-detected: DUAL ARM mode")
+        else:
+            self.get_logger().info("Auto-detected: SINGLE ARM mode")
+
         self._traj = ActionClient(
             self, FollowJointTrajectory,
-            "/joint_trajectory_controller/follow_joint_trajectory",
+            CONTROLLER_NS,
             callback_group=cb)
+
+        # arm_2 client — only created in dual-arm mode
+        self._traj2 = (
+            ActionClient(self, FollowJointTrajectory,
+                         ARM_CFG[2]["ctrl"], callback_group=cb)
+            if self._dual_arm else None
+        )
 
         self._ik = self.create_client(
             GetPositionIK, "/compute_ik", callback_group=cb)
@@ -129,8 +186,24 @@ class MultiBoxInspector(Node):
 
         self._models = {p: YOLO(m) for p, m in MODELS.items()}
 
-        self.get_logger().info("Waiting for controller…")
+        # dashboard publishers
+        import json as _json
+        self._json = _json
+        self._pub_result = self.create_publisher(String, "/inspection/result", 10)
+        self._pub_status = self.create_publisher(String, "/arm/status", 10)
+        self._frame_count = 0
+
+        # Shared mutex — only one arm may be in the table zone at a time.
+        self._table_lock = threading.Lock()
+
+        # The /compute_ik service client is NOT safe for concurrent async calls
+        # from multiple threads — one client, one in-flight request at a time.
+        self._ik_lock = threading.Lock()
+
+        self.get_logger().info("Waiting for controller(s)…")
         self._traj.wait_for_server()
+        if self._traj2:
+            self._traj2.wait_for_server()
         self.get_logger().info("Waiting for IK service…")
         self._ik.wait_for_service()
         self.get_logger().info("Ready.")
@@ -278,31 +351,40 @@ class MultiBoxInspector(Node):
             obj["sdf_name"] = name
             used_names.add(name)
 
-        # ── Log ───────────────────────────────────────────────────────────────
+        # ── Log + publish to dashboard ────────────────────────────────────────
         for obj in objects:
             action = "→ REJECT ✗" if obj["verdict"] == "DEFECT" else "→ ACCEPT ✓"
             self.get_logger().info(
                 f"  {obj['sdf_name']} at ({obj['wx']:.3f},{obj['wy']:.3f}) "
                 f"{obj['verdict']} conf={obj['conf']:.2f}  {action}")
+            self._frame_count += 1
+            payload = self._json.dumps({
+                "verdict":    obj["verdict"],
+                "confidence": round(obj["conf"], 3),
+                "action":     "REJECT" if obj["verdict"] == "DEFECT" else "ACCEPT",
+                "product":    obj.get("product", "unknown"),
+                "frame":      self._frame_count,
+            })
+            self._pub_result.publish(String(data=payload))
 
         return objects
 
     # ── IK ────────────────────────────────────────────────────────────────────
-    def _ik_once(self, x, y, z, seed: list):
+    def _ik_once(self, x, y, z, seed: list, group: str, base_link: str, joints: list):
         """Single raw IK call with a given seed.  Returns joint list or None."""
         req = GetPositionIK.Request()
         req.ik_request                  = PositionIKRequest()
-        req.ik_request.group_name       = "manipulator"
-        req.ik_request.avoid_collisions = True
-        req.ik_request.timeout.sec      = 5
+        req.ik_request.group_name       = group
+        req.ik_request.avoid_collisions = False  # table_lock handles physical safety
+        req.ik_request.timeout.sec      = 2
 
         rs = RobotState()
-        rs.joint_state.name     = JOINT_NAMES
+        rs.joint_state.name     = joints
         rs.joint_state.position = seed
         req.ik_request.robot_state = rs
 
         pose = PoseStamped()
-        pose.header.frame_id    = "base_link"
+        pose.header.frame_id    = base_link
         pose.pose.position.x    = x
         pose.pose.position.y    = y
         pose.pose.position.z    = z
@@ -313,77 +395,81 @@ class MultiBoxInspector(Node):
         pose.pose.orientation.w = 0.0
         req.ik_request.pose_stamped = pose
 
-        done, result = threading.Event(), [None]
-        self._ik.call_async(req).add_done_callback(
-            lambda f: (result.__setitem__(0, f.result()), done.set()))
-        if not done.wait(10.0):
-            return None
-        resp = result[0]
+        with self._ik_lock:   # one IK call in flight at a time
+            done, result = threading.Event(), [None]
+            self._ik.call_async(req).add_done_callback(
+                lambda f: (result.__setitem__(0, f.result()), done.set()))
+            if not done.wait(10.0):
+                return None
+            resp = result[0]
         if resp.error_code.val != 1:
             return None
-        return list(resp.solution.joint_state.position[:6])
+        # The response contains the FULL robot state (all joints of all arms).
+        # Extract only the joints that belong to THIS arm by matching names.
+        sol_names = list(resp.solution.joint_state.name)
+        sol_pos   = list(resp.solution.joint_state.position)
+        name_to_pos = dict(zip(sol_names, sol_pos))
+        extracted = [name_to_pos.get(jn) for jn in joints]
+        if any(v is None for v in extracted):
+            return None
+        return extracted
 
-    def _ik_solve(self, x, y, z, seed_joints=None):
+    def _ik_solve(self, x, y, z, seed_joints=None, arm=1):
         """IK with automatic retry to avoid large joint jumps (wrist flips).
-
-        KDL can converge to any joint_4 value when the tool points straight
-        down (null-space DOF).  We detect that and retry with seeds that bias
-        joint_4 toward 0 so the solver stays near the current configuration.
-        Returns the solution with the smallest max single-joint displacement.
+        x, y, z are already in the arm's LOCAL frame.
         """
+        cfg     = ARM_CFG[arm] if self._dual_arm else {
+            "group": MOVEIT_GROUP, "base": BASE_LINK, "joints": JOINT_NAMES}
         primary = seed_joints if seed_joints is not None else pre_pick(x, y)
-        joints  = self._ik_once(x, y, z, primary)
+        joints  = self._ik_once(x, y, z, primary,
+                                cfg["group"], cfg["base"], cfg["joints"])
 
         if joints is None:
-            self.get_logger().error(f"IK failed at ({x:.2f},{y:.2f},{z:.2f})")
+            self.get_logger().error(f"IK arm{arm} failed at ({x:.2f},{y:.2f},{z:.2f})")
             return None
 
-        # Maximum jump of any single joint from the seed
         def _max_jump(sol):
             return max(abs(sol[i] - primary[i]) for i in range(6))
 
         best, best_jump = joints, _max_jump(joints)
 
-        # If any joint jumped more than ~86°, try alternative seeds.
-        # Two main culprits:
-        #   j1 (base) — IK can find a "mirror" solution 180° away
-        #   j4 (forearm roll) — null-space DOF when pointing straight down
         if best_jump > 1.5:
-            j1_exp = math.atan2(y, x)   # expected base rotation toward target
+            j1_exp = math.atan2(y, x)
             retry_seeds = [
-                (j1_exp,        0.0),
-                (j1_exp,        0.3),
-                (j1_exp,       -0.3),
-                (j1_exp + 0.2,  0.0),
-                (j1_exp - 0.2,  0.0),
-                (j1_exp + 0.2,  0.3),
-                (j1_exp - 0.2, -0.3),
+                (j1_exp,        0.0), (j1_exp,       0.3), (j1_exp,      -0.3),
+                (j1_exp + 0.2,  0.0), (j1_exp - 0.2, 0.0),
+                (j1_exp + 0.3,  0.3), (j1_exp - 0.3,-0.3),
+                (j1_exp,       -0.9), (j1_exp,       0.9),  # varied j2 via seed
+                (j1_exp + 0.1,  0.0), (j1_exp - 0.1, 0.0),
             ]
             for j1_bias, j4_bias in retry_seeds:
                 alt_seed    = list(primary)
                 alt_seed[0] = j1_bias
                 alt_seed[3] = j4_bias
-                alt = self._ik_once(x, y, z, alt_seed)
+                alt = self._ik_once(x, y, z, alt_seed,
+                                    cfg["group"], cfg["base"], cfg["joints"])
                 if alt is None:
                     continue
                 jump = _max_jump(alt)
                 if jump < best_jump:
                     best_jump, best = jump, alt
                 if best_jump < 1.0:
-                    break   # good enough — stop early
+                    break
 
         self.get_logger().info(
-            f"  IK → {[round(j,3) for j in best]}  (max_jump={best_jump:.2f} rad)")
+            f"  ARM{arm} IK → {[round(j,3) for j in best]}  (max_jump={best_jump:.2f})")
         return best
 
     # ── motion ────────────────────────────────────────────────────────────────
-    def _send_traj(self, waypoints: list) -> bool:
+    def _send_traj(self, waypoints: list, arm: int = 1) -> bool:
         """Send a multi-point trajectory for smooth continuous motion.
         waypoints = [(joint_positions, time_from_start_sec), ...]
-        All points travel as ONE trajectory — no stop between them.
         """
+        j_names = (ARM_CFG[arm]["joints"] if self._dual_arm else JOINT_NAMES)
+        client  = self._traj if arm == 1 else self._traj2
+
         traj             = JointTrajectory()
-        traj.joint_names = JOINT_NAMES
+        traj.joint_names = j_names
 
         for positions, t in waypoints:
             pt               = JointTrajectoryPoint()
@@ -404,27 +490,23 @@ class MultiBoxInspector(Node):
             gh_holder[0] = f.result()
             done.set()
 
-        self._traj.send_goal_async(goal).add_done_callback(_goal_cb)
+        client.send_goal_async(goal).add_done_callback(_goal_cb)
         if not done.wait(15.0):
             return False
 
         gh = gh_holder[0]
         if not gh.accepted:
-            self.get_logger().error("Trajectory rejected")
+            self.get_logger().error(f"ARM{arm} trajectory rejected")
             return False
 
         done.clear()
-
-        def _res_cb(_):
-            done.set()
-
-        gh.get_result_async().add_done_callback(_res_cb)
+        gh.get_result_async().add_done_callback(lambda _: done.set())
         done.wait(float(total_t + 20))
         return True
 
-    def _move(self, positions, duration: float) -> bool:
-        """Single-point move — kept for HOME and simple transitions."""
-        return self._send_traj([(positions, duration)])
+    def _move(self, positions, duration: float, arm: int = 1) -> bool:
+        """Single-point move — for HOME and simple transitions."""
+        return self._send_traj([(positions, duration)], arm=arm)
 
     # ── nearest-neighbour ordering ────────────────────────────────────────────
     @staticmethod
@@ -447,87 +529,132 @@ class MultiBoxInspector(Node):
         return ordered
 
     # ── pick & place ──────────────────────────────────────────────────────────
-    def _pick_and_place(self, obj: dict, last_joints=None) -> list:
-        """Pick obj and drop in the correct bin.  Returns place_j for cascading.
+    def _pick_and_place(self, obj: dict, last_joints=None, arm: int = 1) -> list:
+        """Pick obj with the given arm and drop in its bin.
+        Returns place_j for IK seed cascading.
 
-        last_joints: joint config the arm is currently at (previous place_j).
-          When provided the arm goes DIRECTLY to approach — no intermediate swing.
-          When None (first box) a pre_pick intermediate is inserted so joint_5
-          does not spin 360°.
+        Collision strategy — TABLE LOCK:
+          Phase 1 (lock held):   pre_pick → approach → pick → lift
+            Only ONE arm may be in this zone at a time.
+          Phase 2 (lock free):   lift → place at bin
+            Both arms can fly to their bins simultaneously — no overlap possible.
+
+        arm=1 picks DEFECT → REJECT_BIN  (base at x=0,   faces +x)
+        arm=2 picks GOOD   → ACCEPT_BIN  (base at x=1.2, faces -x)
         """
-        wx, wy = obj["wx"], obj["wy"]
-        defect = obj["verdict"] == "DEFECT"
-        bx, by = REJECT_BIN if defect else ACCEPT_BIN
-        label  = "REJECT ✗" if defect else "ACCEPT ✓"
-        self.get_logger().info(f"▶ {obj['sdf_name']} at ({wx:.3f},{wy:.3f}) → {label}")
+        cfg      = ARM_CFG[arm] if self._dual_arm else {
+            "to_local": lambda wx, wy: (wx, wy),
+            "bin": REJECT_BIN if obj["verdict"] == "DEFECT" else ACCEPT_BIN,
+        }
+        to_local = cfg["to_local"]
 
-        # ── IK cascade: each step seeded from the previous solution ───────────
-        # Seed for approach: use last place_j if available, else pre_pick()
-        seed       = last_joints if last_joints is not None else pre_pick(wx, wy)
-        approach_j = self._ik_solve(wx, wy, APPROACH_Z, seed)
+        wx,  wy    = obj["wx"], obj["wy"]
+        bx_w, by_w = cfg["bin"]
+        lx,  ly    = to_local(wx,   wy)       # box in arm-local frame
+        blx, bly   = to_local(bx_w, by_w)     # bin  in arm-local frame
+        label      = "REJECT ✗" if obj["verdict"] == "DEFECT" else "ACCEPT ✓"
+
+        self.get_logger().info(
+            f"▶ ARM{arm} {obj['sdf_name']} world({wx:.3f},{wy:.3f})"
+            f" local({lx:.3f},{ly:.3f}) → {label}")
+
+        # ── Pre-compute all IK before touching any lock ────────────────────────
+        # Approach always uses pre_pick as seed — the bin place_j is a distant
+        # configuration that KDL cannot converge from to the table approach pose.
+        # Cascade (last_joints → approach → pick → lift → place) only applies
+        # for pick/lift/place which are small incremental moves.
+        approach_j = self._ik_solve(lx,  ly,  APPROACH_Z, pre_pick(lx, ly), arm=arm)
         if approach_j is None:
-            self.get_logger().error("IK failed (approach) — skipping")
+            self.get_logger().error(f"ARM{arm} IK failed (approach) — skipping")
             return last_joints
-        pick_j = self._ik_solve(wx, wy, PICK_Z,    approach_j)
+        pick_j  = self._ik_solve(lx,  ly,  PICK_Z,    approach_j, arm=arm)
         if pick_j is None:
-            self.get_logger().error("IK failed (pick) — skipping")
+            self.get_logger().error(f"ARM{arm} IK failed (pick) — skipping")
             return last_joints
-        lift_j = self._ik_solve(wx, wy, LIFT_Z,    pick_j)
+        lift_j  = self._ik_solve(lx,  ly,  LIFT_Z,    pick_j,     arm=arm)
         if lift_j is None:
-            self.get_logger().error("IK failed (lift) — skipping")
+            self.get_logger().error(f"ARM{arm} IK failed (lift) — skipping")
             return last_joints
-        # Seed place from lift_j (arm's actual current config) not pre_pick.
-        # pre_pick gives j1=atan2(by,bx) which is correct for direction but
-        # ignores the full arm state — IK often finds a "mirror" back-solution.
-        # lift_j already has the arm in the right region so the solver finds
-        # the nearest valid bin pose without flipping.
-        place_j = self._ik_solve(bx, by, PLACE_Z,  lift_j)
+        place_j = self._ik_solve(blx, bly, PLACE_Z,   lift_j,     arm=arm)
         if place_j is None:
-            self.get_logger().error("IK failed (place) — skipping")
+            self.get_logger().error(f"ARM{arm} IK failed (place) — skipping")
             return last_joints
 
-        # ── Trajectory 1: → approach → pick ──────────────────────────────────
-        # First box: insert pre_pick intermediate to avoid 360° joint_5 spin.
-        # Subsequent boxes: arm already near the table — go straight to approach.
-        if last_joints is None:
-            self.get_logger().info("  → pre_pick → approach → pick")
-            self._send_traj([
-                (pre_pick(wx, wy), 3.0),
-                (approach_j,       6.0),
-                (pick_j,           8.0),
-            ])
-        else:
-            self.get_logger().info("  → approach → pick  (direct, no swing)")
-            self._send_traj([
-                (approach_j, 3.5),
-                (pick_j,     5.5),
-            ])
-        time.sleep(0.25)
+        # ── Phase 1: TABLE ZONE — acquire lock ────────────────────────────────
+        self.get_logger().info(f"  ARM{arm}: waiting for table access…")
+        self._table_lock.acquire()
+        self.get_logger().info(f"  ARM{arm}: table lock acquired — entering zone")
+        self._pub_status.publish(String(data="PICKING"))
 
-        # ── Vacuum ON ─────────────────────────────────────────────────────────
-        self.get_logger().info("  🔵 Vacuum ON")
-        teleport_box(obj["sdf_name"], wx, wy, BOX_CTR_Z)
+        try:
+            if last_joints is None:
+                self.get_logger().info(f"  ARM{arm} → pre_pick → approach → pick")
+                self._send_traj([
+                    (pre_pick(lx, ly), 0.8),
+                    (approach_j,       1.6),
+                    (pick_j,           2.4),
+                ], arm=arm)
+            else:
+                self.get_logger().info(f"  ARM{arm} → approach → pick  (direct)")
+                self._send_traj([
+                    (approach_j, 1.0),
+                    (pick_j,     1.8),
+                ], arm=arm)
+            time.sleep(0.10)
 
-        # ── Trajectory 2: lift → place ────────────────────────────────────────
-        self.get_logger().info(f"  → lift → {label}")
-        self._send_traj([
-            (lift_j,  2.5),
-            (place_j, 6.0),
-        ])
-        teleport_box(obj["sdf_name"], bx, by, carried_z(PLACE_Z))
-        time.sleep(0.3)
+            self.get_logger().info(f"  ARM{arm} Vacuum ON")
+            teleport_box(obj["sdf_name"], wx, wy, BOX_CTR_Z)
 
-        self.get_logger().info("  ⚪ Vacuum OFF — released")
-        return place_j   # ← caller uses this as seed for the next box
+            # Lift straight up — still in the shared zone until clear of table
+            self.get_logger().info(f"  ARM{arm} → lift")
+            self._send_traj([(lift_j, 0.8)], arm=arm)
+
+        finally:
+            self._table_lock.release()
+            self.get_logger().info(f"  ARM{arm}: table lock released — zone clear")
+
+        # ── Phase 2: FLY TO BIN — no lock needed ──────────────────────────────
+        self.get_logger().info(f"  ARM{arm} → place at bin  {label}")
+        self._pub_status.publish(String(data="PLACING"))
+        self._send_traj([(place_j, 1.2)], arm=arm)
+        teleport_box(obj["sdf_name"], bx_w, by_w, carried_z(PLACE_Z))
+        time.sleep(0.15)
+
+        self.get_logger().info(f"  ARM{arm} Vacuum OFF — released")
+        self._pub_status.publish(String(data="IDLE"))
+        return place_j
+
+    # ── arm worker ────────────────────────────────────────────────────────────
+    def _run_arm(self, arm: int, objects: list):
+        """Pick-and-place loop for one arm.  Called in its own thread."""
+        if not objects:
+            self.get_logger().info(f"ARM{arm}: nothing to pick.")
+            return
+        ordered = self._nearest_neighbour(objects, start_x=0.0, start_y=0.0)
+        self.get_logger().info(
+            f"ARM{arm}: {len(ordered)} item(s) — "
+            f"{[o['sdf_name'] for o in ordered]}")
+        last_j = None
+        for obj in ordered:
+            last_j = self._pick_and_place(obj, last_joints=last_j, arm=arm)
+        self._move(HOME, 1.5, arm=arm)
+        self.get_logger().info(f"ARM{arm}: done, returned home.")
 
     # ── main sequence ─────────────────────────────────────────────────────────
     def _run(self):
         time.sleep(3.0)
         self.get_logger().info("=== Inspection start ===")
-        self._move(HOME, 4)
+
+        # Move both arms to HOME simultaneously
+        if self._dual_arm:
+            t1 = threading.Thread(target=self._move, args=(HOME, 1.5, 1))
+            t2 = threading.Thread(target=self._move, args=(HOME, 1.5, 2))
+            t1.start(); t2.start(); t1.join(); t2.join()
+        else:
+            self._move(HOME, 2.0)
         time.sleep(0.5)
 
-        # Phase 1 — vision scan (robot at HOME, camera overhead)
+        # Phase 1 — vision scan
         self.get_logger().info("--- Phase 1: Vision scan ---")
         objects = self._find_and_classify()
 
@@ -535,27 +662,29 @@ class MultiBoxInspector(Node):
             self.get_logger().warn("Nothing found on table — done.")
             return
 
-        # Phase 2 — sort by nearest-neighbour from HOME (0,0)
-        # then pick continuously, seeding each IK from the previous place pose
-        ordered = self._nearest_neighbour(objects, start_x=0.0, start_y=0.0)
-        self.get_logger().info(
-            f"--- Phase 2: Sort {len(ordered)} object(s) "
-            f"(order: {[o['sdf_name'] for o in ordered]}) ---")
+        self.get_logger().info(f"Found {len(objects)} object(s).")
 
-        last_joints = None
-        for obj in ordered:
-            last_joints = self._pick_and_place(obj, last_joints=last_joints)
-
-        # Single home return at the very end
-        self.get_logger().info("  → home (all done)")
-        self._move(HOME, 4.0)
+        if self._dual_arm:
+            # Split: arm_1 handles DEFECT, arm_2 handles GOOD
+            defects = [o for o in objects if o["verdict"] == "DEFECT"]
+            goods   = [o for o in objects if o["verdict"] == "GOOD"]
+            self.get_logger().info(
+                f"--- Phase 2: ARM1 picks {len(defects)} DEFECT, "
+                f"ARM2 picks {len(goods)} GOOD (parallel) ---")
+            t1 = threading.Thread(target=self._run_arm, args=(1, defects), daemon=True)
+            t2 = threading.Thread(target=self._run_arm, args=(2, goods),   daemon=True)
+            t1.start(); t2.start(); t1.join(); t2.join()
+        else:
+            # Single-arm: pick everything with arm_1
+            ordered = self._nearest_neighbour(objects, 0.0, 0.0)
+            self.get_logger().info(
+                f"--- Phase 2: Single arm picks {len(ordered)} object(s) ---")
+            last_j = None
+            for obj in ordered:
+                last_j = self._pick_and_place(obj, last_joints=last_j, arm=1)
+            self._move(HOME, 1.5, arm=1)
 
         self.get_logger().info("=== Done ===")
-        for obj in ordered:
-            action = "REJECT" if obj["verdict"] == "DEFECT" else "ACCEPT"
-            self.get_logger().info(
-                f"  {obj['sdf_name']} ({obj['wx']:.3f},{obj['wy']:.3f}): "
-                f"{obj['verdict']} → {action}")
 
 
 def main():

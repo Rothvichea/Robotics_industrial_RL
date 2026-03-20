@@ -1,11 +1,24 @@
 """
 KR6 Industrial RL Dashboard — PyQt6
 =====================================
-Live monitoring of:
-  - Joint states (6 joints, bar indicators)
-  - RL agent status (episode, steps, reward, dist to goal)
-  - Vision QC (defect rate, last detection, severity)
-  - Arm status (RUNNING / REPLANNING / ABORTED / IDLE)
+Two operating modes:
+
+  ▶ Start (RL Sim)
+      Runs the PPO agent + PrintMonitor in a standalone Gymnasium loop.
+      No Gazebo required — useful for RL evaluation / replay.
+
+  🔴 Live (ROS2)
+      Subscribes to the live Ignition Gazebo simulation:
+        /joint_states          → real joint bar display
+        /inspection_cam/image_raw → real YOLO defect detection
+      Requires inspection_cell.launch.py to be running.
+
+Panels:
+  - ARM STATUS  — IDLE / RUNNING / REPLANNING / ABORTED / REACHED / TIMEOUT
+  - JOINT POSITIONS — 6 bars (current vs goal)
+  - RL AGENT    — episode, steps, reward, dist-to-goal
+  - VISION QC   — defect rate, count, severity, recommended action
+  - EVENT LOG   — timestamped messages (last 12)
 """
 
 import sys
@@ -170,6 +183,99 @@ class RLWorker(threading.Thread):
         STATE.add_log("All episodes complete.")
 
 
+# ── Live ROS2 worker ──────────────────────────────────────────────
+class ROS2LiveWorker(threading.Thread):
+    """Subscribes to the running Ignition Gazebo simulation.
+    Reads real joint states + camera feed; runs PrintMonitor for live QC.
+    Falls back gracefully if rclpy is not available.
+    """
+
+    def __init__(self, product_type: str = "screw"):
+        super().__init__(daemon=True)
+        self._stop_flag   = False
+        self.product_type = product_type
+
+    def stop(self):
+        self._stop_flag = True
+
+    def run(self):
+        # ── import ROS2 ──────────────────────────────────────────
+        try:
+            import rclpy
+            from rclpy.node import Node
+            from sensor_msgs.msg import Image, JointState as JointStateMsg
+        except ImportError:
+            STATE.add_log("ERROR: rclpy not available — install ROS 2")
+            STATE.update(status="IDLE")
+            return
+
+        try:
+            import cv2
+        except ImportError:
+            STATE.add_log("ERROR: cv2 not available")
+            STATE.update(status="IDLE")
+            return
+
+        # ── init ROS2 ────────────────────────────────────────────
+        if not rclpy.ok():
+            rclpy.init()
+
+        node    = rclpy.create_node("kr6_dashboard_live")
+        monitor = PrintMonitor(product_type=self.product_type, device="cuda")
+        STATE.add_log(f"Live ROS2 — {self.product_type} monitor ready")
+        STATE.update(status="RUNNING")
+
+        # joint name → index mapping
+        J_IDX = {f"joint_{i+1}": i for i in range(6)}
+
+        # ── joint state callback ──────────────────────────────────
+        def _joint_cb(msg: JointStateMsg):
+            pos = list(STATE.joint_pos)
+            for name, p in zip(msg.name, msg.position):
+                idx = J_IDX.get(name)
+                if idx is not None:
+                    pos[idx] = float(p)
+            STATE.update(joint_pos=np.array(pos))
+
+        # ── camera callback — runs YOLO on every frame ────────────
+        def _cam_cb(msg: Image):
+            data = np.frombuffer(msg.data, dtype=np.uint8)
+            img  = data.reshape((msg.height, msg.width, 3))
+            if msg.encoding == "rgb8":
+                img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
+
+            result = monitor.inspect(img, conf_threshold=0.20)
+            STATE.update(
+                defect_rate  = monitor.defect_count / max(monitor.total_frames, 1),
+                defect_count = monitor.defect_count,
+                total_frames = monitor.total_frames,
+                last_severity= result.severity,
+                last_action  = result.action,
+                status       = "RUNNING",
+            )
+            if result.has_defect:
+                STATE.add_log(
+                    f"DEFECT  sev={result.severity}  "
+                    f"conf={result.confidence:.2f}  → {result.action}"
+                )
+
+        # ── subscribe ─────────────────────────────────────────────
+        node.create_subscription(
+            JointStateMsg, "/joint_states", _joint_cb, 10)
+        node.create_subscription(
+            Image, "/inspection_cam/image_raw", _cam_cb, 2)
+
+        STATE.add_log("Subscribed to /joint_states + /inspection_cam")
+
+        # ── spin until stopped ────────────────────────────────────
+        while not self._stop_flag and rclpy.ok():
+            rclpy.spin_once(node, timeout_sec=0.05)
+
+        node.destroy_node()
+        STATE.update(status="IDLE")
+        STATE.add_log("Live ROS2 mode stopped.")
+
+
 # ── UI helpers ────────────────────────────────────────────────────
 def make_label(text, size=11, bold=False, color=None):
     lbl = QLabel(text)
@@ -240,16 +346,27 @@ class Dashboard(QMainWindow):
 
         # bottom buttons
         btn_layout = QHBoxLayout()
-        self.btn_start = QPushButton("▶  Start")
+
+        self.btn_start = QPushButton("▶  Start (RL Sim)")
+        self.btn_live  = QPushButton("🔴  Live (ROS2)")
         self.btn_stop  = QPushButton("■  Stop")
+        self.lbl_conn  = make_label("●  disconnected", 9, color="#666666")
+
         self.btn_start.setStyleSheet(
             "background:#1a6b3a; color:white; padding:8px 20px; border-radius:4px;")
+        self.btn_live.setStyleSheet(
+            "background:#1a3a6b; color:white; padding:8px 20px; border-radius:4px;")
         self.btn_stop.setStyleSheet(
             "background:#6b1a1a; color:white; padding:8px 20px; border-radius:4px;")
+
         self.btn_start.clicked.connect(self.start_worker)
+        self.btn_live.clicked.connect(self.start_live_worker)
         self.btn_stop.clicked.connect(self.stop_worker)
+
+        btn_layout.addWidget(self.lbl_conn)
         btn_layout.addStretch()
         btn_layout.addWidget(self.btn_start)
+        btn_layout.addWidget(self.btn_live)
         btn_layout.addWidget(self.btn_stop)
         btn_layout.addStretch()
 
@@ -259,6 +376,7 @@ class Dashboard(QMainWindow):
         central.setLayout(main_layout)
 
         self.worker = None
+        self._live_mode = False
 
         # connect state signal
         STATE.updated.connect(self.refresh)
@@ -362,6 +480,17 @@ class Dashboard(QMainWindow):
 
     # ── refresh UI from state ─────────────────────────────────────
     def refresh(self):
+        # connection indicator
+        if self._live_mode and self.worker and self.worker.is_alive():
+            self.lbl_conn.setText("●  ROS2 live")
+            self.lbl_conn.setStyleSheet("color: #44cc44;")
+        elif not self._live_mode and self.worker and self.worker.is_alive():
+            self.lbl_conn.setText("●  RL sim")
+            self.lbl_conn.setStyleSheet("color: #4488ff;")
+        else:
+            self.lbl_conn.setText("●  disconnected")
+            self.lbl_conn.setStyleSheet("color: #666666;")
+
         # status
         color = STATUS_COLORS.get(STATE.status, "#888888")
         self.lbl_status.setText(STATE.status)
@@ -406,15 +535,25 @@ class Dashboard(QMainWindow):
     def start_worker(self):
         if self.worker and self.worker.is_alive():
             return
+        self._live_mode = False
         self.worker = RLWorker(n_episodes=20, defect_prob=0.08)
         self.worker.start()
-        STATE.add_log("Worker started.")
+        STATE.add_log("RL simulation started.")
+
+    def start_live_worker(self):
+        if self.worker and self.worker.is_alive():
+            return
+        self._live_mode = True
+        self.worker = ROS2LiveWorker(product_type="screw")
+        self.worker.start()
+        STATE.add_log("Live ROS2 mode starting…")
 
     def stop_worker(self):
         if self.worker:
             self.worker.stop()
+        self._live_mode = False
         STATE.update(status="IDLE")
-        STATE.add_log("Worker stopped.")
+        STATE.add_log("Stopped.")
 
 
 def main():
