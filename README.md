@@ -311,7 +311,7 @@ The long-term goal is a **Vision-Language-Action model** replacing explicit moti
 
 ---
 ## Live Demonstrations
-
+https://github.com/user-attachments/assets/4a30588a-5687-4498-b994-96a134850e11
 
 
 [https://github.com/Rothvichea/Robotics_industrial_RL/raw/main/display_part2.mp4](https://github.com/user-attachments/assets/25019a6b-f0f0-4c91-b472-cc0e56387b60)
