@@ -310,6 +310,16 @@ The long-term goal is a **Vision-Language-Action model** replacing explicit moti
 | [industrial-gnn-predictive-maintenance](https://github.com/Rothvichea/industrial-gnn-predictive-maintenance) | 1D-CNN + GraphSAGE bearing fault — 99.10% accuracy |
 
 ---
+## Live Demonstrations
 
+### Dual-Arm Inspection — Part 1
+
+https://github.com/Rothvichea/Robotics_industrial_RL/raw/main/display_part1.mp4
+
+### Dual-Arm Inspection — Part 2
+
+https://github.com/Rothvichea/Robotics_industrial_RL/raw/main/display_part2.mp4
+
+---
 **Rothvichea CHEA** · Mechatronics Engineer · Lyon, France  
 [Portfolio](https://rothvicheachea.netlify.app) · [LinkedIn](https://www.linkedin.com/in/chea-rothvichea-a96154227/) · [GitHub](https://github.com/Rothvichea)
