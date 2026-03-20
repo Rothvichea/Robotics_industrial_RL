@@ -312,13 +312,9 @@ The long-term goal is a **Vision-Language-Action model** replacing explicit moti
 ---
 ## Live Demonstrations
 
-### Dual-Arm Inspection — Part 1
 
-https://github.com/Rothvichea/Robotics_industrial_RL/raw/main/display_part1.mp4
 
-### Dual-Arm Inspection — Part 2
-
-https://github.com/Rothvichea/Robotics_industrial_RL/raw/main/display_part2.mp4
+[https://github.com/Rothvichea/Robotics_industrial_RL/raw/main/display_part2.mp4](https://github.com/user-attachments/assets/25019a6b-f0f0-4c91-b472-cc0e56387b60)
 
 ---
 **Rothvichea CHEA** · Mechatronics Engineer · Lyon, France  
